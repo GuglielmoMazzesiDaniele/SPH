@@ -2,16 +2,15 @@
 #pragma kernel calculatePredictedPosition
 #pragma kernel calculateDensity
 #pragma kernel calculateDeltaVelocity
-#pragma kernel simulationStep
 
 // STRUCTS
 
 struct particle
 {
-    float2 position;
-    float2 predicted_position;
-    float2 velocity;
-    float2 acceleration;
+    float3 position;
+    float3 predicted_position;
+    float3 velocity;
+    float3 acceleration;
     float density;
 };
 
@@ -35,7 +34,7 @@ float viscosity;
 
 // Bounds related fields
 float collision_damping;
-float2 half_bounds;
+float3 half_bounds;
 
 // Kernel related fields
 float kernel_radius;
@@ -146,7 +145,7 @@ void calculateDensity(uint id : SV_DispatchThreadID)
             next_current_particle = particles_buffer_ping[i];
         
         // Computing the vector between the current particle and the target
-        float2 diff_vector = next_current_particle.predicted_position - next_target_particle.predicted_position;
+        float3 diff_vector = next_current_particle.predicted_position - next_target_particle.predicted_position;
 
         // Computing the squared distance
         float sqr_distance = dot(diff_vector, diff_vector);
@@ -187,7 +186,7 @@ void calculateDeltaVelocity(uint id : SV_DispatchThreadID)
     }
     
     // Initializing the new acceleration of the target particle
-    float2 force = 0.0f;
+    float3 force = 0.0f;
 
     // Linear scan of all the particles
     for(uint i = 0; i < particles_amount; i++)
@@ -211,7 +210,7 @@ void calculateDeltaVelocity(uint id : SV_DispatchThreadID)
         }
         
         // Computing the vector between the current particle and the target
-        float2 diff_vector = next_current_particle.predicted_position - next_target_particle.predicted_position;
+        float3 diff_vector = next_current_particle.predicted_position - next_target_particle.predicted_position;
 
         // Computing the squared distance
         float sqr_distance = dot(diff_vector, diff_vector);
@@ -227,14 +226,14 @@ void calculateDeltaVelocity(uint id : SV_DispatchThreadID)
         float viscosity_influence = viscosity_laplacian(distance);
 
         // Computing the difference between velocities
-        float2 velocities_difference = current_particle.velocity - target_particle.velocity;
+        float3 velocities_difference = current_particle.velocity - target_particle.velocity;
         
         // Adding the result to the force
         force += particle_mass * viscosity_influence * viscosity * velocities_difference / next_current_particle.density;
 
         // Computing the direction between the current particle and the point of interest
-        float2 pressure_direction = distance == 0 ?
-            float2(1, 0)
+        float3 pressure_direction = distance == 0 ?
+            float3(1, 0, 0)
             : diff_vector / distance;
 
         // Evaluating the slope of the kernel at the given distance
@@ -248,7 +247,7 @@ void calculateDeltaVelocity(uint id : SV_DispatchThreadID)
     }
 
     // Computing the acceleration caused by the density field forces and multiplying it by delta time
-    next_target_particle.velocity += (force / target_particle.density + float2(0, -1) * gravity) * delta_time;
+    next_target_particle.velocity += (force / target_particle.density + float3(0, -1, 0) * gravity) * delta_time;
     
     // Updating the position of the particle
     next_target_particle.position += target_particle.velocity * delta_time;
@@ -273,5 +272,4 @@ void simulationStep(uint id : SV_DispatchThreadID)
         target_particle = particles_buffer_pong[id];
 
     // Computing the densities
-    
 }

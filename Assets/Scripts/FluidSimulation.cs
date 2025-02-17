@@ -21,9 +21,8 @@ public class FluidSimulation : MonoBehaviour
     [Header("Kernel")]
     [SerializeField] public float kernelRadius;
     
-    [FormerlySerializedAs("boundsSize")]
     [Header("Bounds")]
-    [SerializeField] public Vector2 bounds;
+    [SerializeField] public Vector3 bounds;
     
     [Header("Simulation")]
     [SerializeField] public float gravity;
@@ -49,10 +48,10 @@ public class FluidSimulation : MonoBehaviour
     [Serializable]
     private struct Particle
     {
-        public Vector2 position;
-        public Vector2 predictedPosition;
-        public Vector2 velocity;
-        public Vector2 acceleration;
+        public Vector3 position;
+        public Vector3 predictedPosition;
+        public Vector3 velocity;
+        public Vector3 acceleration;
         public float density;
     }
     
@@ -71,17 +70,17 @@ public class FluidSimulation : MonoBehaviour
     private struct SpatialEntry
     {
         public int particleIndex;
-        public uint cellKey;
+        public int cellKey;
     }
     
     // Particles related fields
     private Particle[] _particles;
     
     // Bounds related fields
-    private Vector2 _halfBounds;
+    private Vector3 _halfBounds;
     
     // Simulation related fields
-    private Vector2 _gravityAcceleration;
+    private Vector3 _gravityAcceleration;
     
     // Data structure related fields
     private int _isPingActive;
@@ -89,25 +88,44 @@ public class FluidSimulation : MonoBehaviour
     // Kernel related fields
     private float _sqrKernelRadius;
     private float _poly6Normalization;
-    private float _spikyGradientFirstTerm;
-    private float _viscosityLaplacianFirstTerm;
+    private float _spikyGradientNormalization;
+    private float _viscosityLaplacianNormalization;
     
     // Optimization related fields
     private SpatialEntry[] _spatialLookup;
     private int[] _lookupStartIndex;
     private List<SpatialEntry>[] _buckets;
     
-    private static readonly Vector2Int[] CellOffsets =
+    // Array of neighbours particles
+    private static readonly Vector3Int[] CellOffsets =
     {
-        new (-1,  1),
-        new ( 0,  1),
-        new ( 1,  1),
-        new (-1,  0),
-        new ( 0,  0),
-        new ( 1,  0),
-        new (-1, -1),
-        new ( 0, -1),
-        new ( 1, -1),
+        new (-1,  1,  1),
+        new ( 0,  1,  1),
+        new ( 1,  1,  1),
+        new (-1,  0,  1),
+        new ( 0,  0,  1),
+        new ( 1,  0,  1),
+        new (-1, -1,  1),
+        new ( 0, -1,  1),
+        new ( 1, -1,  1),
+        new (-1,  1,  0),
+        new ( 0,  1,  0),
+        new ( 1,  1,  0),
+        new (-1,  0,  0),
+        new ( 0,  0,  0),
+        new ( 1,  0,  0),
+        new (-1, -1,  0),
+        new ( 0, -1,  0),
+        new ( 1, -1,  0),
+        new (-1,  1, -1),
+        new ( 0,  1, -1),
+        new ( 1,  1, -1),
+        new (-1,  0, -1),
+        new ( 0,  0, -1),
+        new ( 1,  0, -1),
+        new (-1, -1, -1),
+        new ( 0, -1, -1),
+        new ( 1, -1, -1),
     };
     
     // Shaders related fields
@@ -176,7 +194,11 @@ public class FluidSimulation : MonoBehaviour
     private void InitializeParticleShader()
     {
         // Initializing the particle mesh and material
-        _particleMesh = MeshGenerator.CreateQuadMesh();
+        // _particleMesh = MeshGenerator.CreateQuadMesh();
+        // TODO: 3D conversion of the simulation
+        var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        _particleMesh = sphere.GetComponent<MeshFilter>().mesh;
+        Destroy(sphere);
         
         // Assigning the buffer to the shader
         particleMaterial.SetBuffer("particles_buffer_ping", _particlesBufferPing);
@@ -213,12 +235,16 @@ public class FluidSimulation : MonoBehaviour
         // Recomputing the squared kernel value
         _sqrKernelRadius = kernelRadius * kernelRadius;
         
-        // Recomputing the volume of the kernels
-        _poly6Normalization = 4.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 8));
+        // Recomputing the volume of the kernels - 2D
+        // TODO: 3D conversion of the simulation
+        // _poly6Normalization = 4.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 8));
+        // _spikyGradientNormalization = -30.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 5));
+        // _viscosityLaplacianNormalization = 20.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 5));
         
-        // Recomputing the first term of the gradient and laplacian of the kernels
-        _spikyGradientFirstTerm = -30.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 5));
-        _viscosityLaplacianFirstTerm = 20.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 5));
+        // Recomputing the volume of the kernels - 3D
+        _poly6Normalization = 315.0f / (64.0f * Mathf.PI * Mathf.Pow(kernelRadius, 9));
+        _spikyGradientNormalization = -45.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 6));
+        _viscosityLaplacianNormalization = 45.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 6));
     }
 
     /// <summary>
@@ -227,7 +253,7 @@ public class FluidSimulation : MonoBehaviour
     private void UpdateBoundsVariables()
     {
         // Computing the maximum particles coordinates per axis
-        _halfBounds = bounds / 2 - Vector2.one * particleRadius;
+        _halfBounds = bounds / 2 - Vector3.one * particleRadius;
     }
     
     /// <summary>
@@ -258,11 +284,11 @@ public class FluidSimulation : MonoBehaviour
         _particles = new Particle[particlesAmount];
         
         // Initializing the gravity acceleration
-        _gravityAcceleration = gravity * Vector2.down;
+        _gravityAcceleration = gravity * Vector3.down;
         
         // Initializing the compute buffer for the GPU
-        _particlesBufferPing = new ComputeBuffer(particlesAmount, (2 + 2 + 2 + 2 + 1) * sizeof(float));
-        _particlesBufferPong = new ComputeBuffer(particlesAmount, (2 + 2 + 2 + 2 + 1) * sizeof(float));
+        _particlesBufferPing = new ComputeBuffer(particlesAmount, (3 * 4 + 1) * sizeof(float));
+        _particlesBufferPong = new ComputeBuffer(particlesAmount, (3 * 4 + 1) * sizeof(float));
         
         // Initializing the particles position based on the algorithm selected via editor
         switch (initializationAlgorithm)
@@ -271,11 +297,12 @@ public class FluidSimulation : MonoBehaviour
                 for (var i = 0; i < particlesAmount; i++)
                 {
                     // Computing the new coordinates
-                    var x = (UnityEngine.Random.value - 0.5f) * bounds.x;
-                    var y = (UnityEngine.Random.value - 0.5f) * bounds.y;
+                    var randomX = (UnityEngine.Random.value - 0.5f) * bounds.x;
+                    var randomY = (UnityEngine.Random.value - 0.5f) * bounds.y;
+                    var randomZ = (UnityEngine.Random.value - 0.5f) * bounds.z;
                     
                     // Assigning the new position
-                    _particles[i].position = new Vector2(x, y);
+                    _particles[i].position = new Vector3(randomX, randomY, randomZ);
                 }
                 break;
             
@@ -289,12 +316,17 @@ public class FluidSimulation : MonoBehaviour
                 // Initializing the position of each particle
                 for (var i = 0; i < particlesAmount; i++)
                 {
+                    // Computing the indexes of the current particle
+                    var zIndex = i / (particlesPerRow * particlesPerRow);
+                    var yIndex = (i / particlesPerRow) % particlesPerRow;
+                    var xIndex = i % particlesPerRow;
+
                     // Computing the new coordinates
-                    var x = (i % particlesPerRow - particlesPerRow / 2.0f + 0.5f) * spacing;
-                    var y = (i / particlesPerRow - particlesPerCol / 2.0f + 0.5f) * spacing;
-                    
-                    // Assigning the new position
-                    _particles[i].position = new Vector2(x, y);
+                    var x = (xIndex - particlesPerRow / 2.0f + 0.5f) * spacing;
+                    var y = (yIndex - particlesPerRow / 2.0f + 0.5f) * spacing;
+                    var z = (zIndex - particlesPerRow / 2.0f + 0.5f) * spacing;
+
+                    _particles[i].position = new Vector3(x, y, z);
                 }
                 break;
         }
@@ -320,6 +352,7 @@ public class FluidSimulation : MonoBehaviour
         }
         
         // Filling the buffer
+        // TODO: 3D Conversion
         _particlesBufferPing.SetData(_particles);
         _particlesBufferPong.SetData(_particles);
         
@@ -390,8 +423,8 @@ public class FluidSimulation : MonoBehaviour
         simulationComputeShader.SetFloat(_sqrKernelRadiusID, _sqrKernelRadius);
         
         simulationComputeShader.SetFloat(_poly6NormalizationID, _poly6Normalization);
-        simulationComputeShader.SetFloat(_spikyGradientFirstTermID, _spikyGradientFirstTerm);
-        simulationComputeShader.SetFloat(_viscosityLaplacianFirstTermID, _viscosityLaplacianFirstTerm);
+        simulationComputeShader.SetFloat(_spikyGradientFirstTermID, _spikyGradientNormalization);
+        simulationComputeShader.SetFloat(_viscosityLaplacianFirstTermID, _viscosityLaplacianNormalization);
         
         simulationComputeShader.SetFloat(_restDensityID, restDensity);
         simulationComputeShader.SetFloat(_stiffnessID, stiffness);
@@ -429,7 +462,6 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void FixedUpdate()
     {
-        
         // Updating the variables related to the kernels
         UpdateKernelVariables();
         
@@ -615,7 +647,7 @@ public class FluidSimulation : MonoBehaviour
         // Creating the unordered spatial lookup array
         Parallel.For(0, particlesAmount, currentIndex => {
             // Mapping the particle position to a cell in the grid
-            var cellCoordinates = integrationMethod == IntegrationMethod.Euler? 
+            var cellCoordinates = integrationMethod == IntegrationMethod.Euler ?
                 PositionToCellCoordinates(_particles[currentIndex].predictedPosition)
                 : PositionToCellCoordinates(_particles[currentIndex].position);
             
@@ -646,7 +678,7 @@ public class FluidSimulation : MonoBehaviour
             // Even if the bucket is empty it works because an empty bucket will never be accessed
             _lookupStartIndex[i] = spatialIndex;
             
-            // Pushing all the values contained in the bucket into the array, resulting in a storted array
+            // Pushing all the values contained in the bucket into the array, resulting in a sorted array
             for (var j = 0; j < _buckets[i].Count; j++)
             {
                 _spatialLookup[spatialIndex++] = _buckets[i][j];
@@ -664,13 +696,14 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     /// <param name="position">The 2D position to evaluate.</param>
     /// <returns>A tuple representing the coordinates of the cell containing the given position.</returns>
-    private (int x, int y) PositionToCellCoordinates(Vector2 position)
+    private Vector3Int PositionToCellCoordinates(Vector3 position)
     {
         // Computing the coordinates with respect to the given radius
         var x = (int) (position.x / spatialGridCellSize);
         var y = (int) (position.y / spatialGridCellSize);
+        var z = (int) (position.z / spatialGridCellSize);
 
-        return (x, y);
+        return new Vector3Int(x, y, z);
     }
 
     /// <summary>
@@ -678,24 +711,25 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     /// <param name="cellCoordinates">A tuple representing the cell coordinates.</param>
     /// <returns>The corresponding hash value of the coordinates.</returns>
-    private uint HashCell( (int x, int y) cellCoordinates )
+    private int HashCell(Vector3Int cellCoordinates)
     {
-        // Multiplying the coordinates by two arbitrary prime number, as seen in Sebastian Lague's video
-        var a = (uint) cellCoordinates.x * 15823;
-        var b = (uint) cellCoordinates.y * 9737333;
+        // Multiplying the coordinates by three arbitrary prime number
+        var a = cellCoordinates.x * 73856093;
+        var b = cellCoordinates.y * 19349663;
+        var c = cellCoordinates.z * 83492791;
         
-        // Returning the sum of the resulting multiplications
-        return a + b;
+        // Returning the hashed value
+        return a ^ b ^ c;
     }
-
+    
     /// <summary>
     /// Given a hash value, returns its corresponding index in the spatial lookup array.
     /// </summary>
     /// <param name="hash">The hash value to map.</param>
     /// <returns>An index corresponding to the hash value.</returns>
-    private uint GetKeyFromHash(uint hash)
+    private int GetKeyFromHash(int hash)
     {
-        return hash % (uint)particlesAmount;
+        return Mathf.Abs(hash) % particlesAmount;
     }
 
     #endregion
@@ -707,7 +741,7 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     /// <param name="position">A reference to the particle's position</param>
     /// <param name="velocity">A reference to the particle's velocity</param>
-    private void ResolveCollisions(ref Vector2 position,ref Vector2 velocity)
+    private void ResolveCollisions(ref Vector3 position,ref Vector3 velocity)
     {
         // Case in which the particle collided with the bounds on X-axis
         if (Mathf.Abs(position.x) > _halfBounds.x)
@@ -725,6 +759,15 @@ public class FluidSimulation : MonoBehaviour
             position.y = _halfBounds.y * Mathf.Sign(position.y);
             // Flipping the velocity sign and applying a damping
             velocity.y *= -collisionDamping;
+        }
+        
+        // Case in which the particle collided with the bound on Z-Axis
+        if (Mathf.Abs(position.z) > _halfBounds.z)
+        {
+            // Setting the position y to the maximum
+            position.z = _halfBounds.z * Mathf.Sign(position.z);
+            // Flipping the velocity sign and applying a damping
+            velocity.z *= -collisionDamping;
         }
     }
 
@@ -751,9 +794,10 @@ public class FluidSimulation : MonoBehaviour
         foreach (var offset in CellOffsets)
         {
             // Computing the key of the central cell + the current offset
-            var currentCellKey = GetKeyFromHash(HashCell((
+            var currentCellKey = GetKeyFromHash(HashCell(new Vector3Int(
                 cellCoordinates.x + offset.x, 
-                cellCoordinates.y + offset.y)));
+                cellCoordinates.y + offset.y, 
+                cellCoordinates.z + offset.z)));
             
             // Extracting the index of the first element with current cell key
             var startIndex = _lookupStartIndex[currentCellKey];
@@ -794,7 +838,7 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     /// <param name="targetParticleIndex"></param>
     /// <returns></returns>
-    private Vector2 CalculateAcceleration(int targetParticleIndex)
+    private Vector3 CalculateAcceleration(int targetParticleIndex)
     {
         // Extracting a reference to the current particle
         ref var targetParticle = ref _particles[targetParticleIndex];
@@ -805,15 +849,16 @@ public class FluidSimulation : MonoBehaviour
             : PositionToCellCoordinates(targetParticle.position);
 
         // Initializing the density
-        var force = Vector2.zero;
+        var force = Vector3.zero;
 
         // Looping over all the cells belonging to the 3x3 square around the particle
         foreach (var offset in CellOffsets)
         {
             // Computing the key of the central cell + the current offset
-            var currentCellKey = GetKeyFromHash(HashCell((
-                cellCoordinates.x + offset.x,
-                cellCoordinates.y + offset.y)));
+            var currentCellKey = GetKeyFromHash(HashCell(new Vector3Int(
+                cellCoordinates.x + offset.x, 
+                cellCoordinates.y + offset.y, 
+                cellCoordinates.z + offset.z)));
 
             // Extracting the index of the first element with current cell key
             var startIndex = _lookupStartIndex[currentCellKey];
@@ -855,7 +900,7 @@ public class FluidSimulation : MonoBehaviour
                 
                 // Computing the direction between the current particle and the point of interest
                 var pressureDirection = distance == 0 ?
-                    new Vector2(1, 0)
+                    new Vector3(1, 0, 0)
                     : targetToCurrent / distance;
             
                 // Evaluating the slope of the kernel at the given distance
@@ -910,7 +955,7 @@ public class FluidSimulation : MonoBehaviour
     private float SpikyGradient(float distance)
     {
         // Computing the gradient 
-        return _spikyGradientFirstTerm * Mathf.Pow(distance - kernelRadius, 2);
+        return _spikyGradientNormalization * Mathf.Pow(distance - kernelRadius, 2);
     }
 
     /// <summary>
@@ -932,7 +977,7 @@ public class FluidSimulation : MonoBehaviour
     private float ViscosityLaplacian(float distance)
     {
         //Computing the laplacian
-        return _viscosityLaplacianFirstTerm * (kernelRadius - distance);
+        return _viscosityLaplacianNormalization * (kernelRadius - distance);
     }
 
     #endregion
