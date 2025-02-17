@@ -1,0 +1,277 @@
+// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel calculatePredictedPosition
+#pragma kernel calculateDensity
+#pragma kernel calculateDeltaVelocity
+#pragma kernel simulationStep
+
+// STRUCTS
+
+struct particle
+{
+    float2 position;
+    float2 predicted_position;
+    float2 velocity;
+    float2 acceleration;
+    float density;
+};
+
+// GPU RELATED DATA
+
+// Buffer containing the simulation
+RWStructuredBuffer<particle> particles_buffer_ping;
+RWStructuredBuffer<particle> particles_buffer_pong;
+int is_ping_active;
+
+// CPU PROVIDED DATA
+
+// Simulation related fields
+float delta_time;
+float gravity;
+float particles_amount;
+float particle_mass;
+float rest_density;
+float stiffness;
+float viscosity;
+
+// Bounds related fields
+float collision_damping;
+float2 half_bounds;
+
+// Kernel related fields
+float kernel_radius;
+float sqr_kernel_radius;
+float poly6_normalization;
+float spiky_gradient_first_term;
+float viscosity_laplacian_first_term;
+
+// Computes the influence at the given squared distance using the kernel: (radius^2 - distance^2)^3
+float poly6(float sqr_distance)
+{
+    // Computing the influence at given distance
+    return poly6_normalization * pow(sqr_kernel_radius - sqr_distance, 3); 
+}
+
+// Computes the gradient of the Spiky kernel at the given distance
+float spiky_gradient(float distance)
+{
+    return spiky_gradient_first_term * pow(distance - kernel_radius, 2);
+}
+
+// Computes the laplacian of the Viscosity kernel at the given distance
+float viscosity_laplacian(float distance)
+{
+    return viscosity_laplacian_first_term * (kernel_radius - distance);
+}
+
+// Resolve particles collision with simulation's bounds
+void resolveCollision(inout particle target_particle)
+{
+    // Case in which the particle collided with the bounds on X-axis
+    if (abs(target_particle.position.x) > half_bounds.x)
+    {
+        // Setting the position x to the maximum
+        target_particle.position.x = half_bounds.x * sign(target_particle.position.x);
+        // Flipping the velocity sign and applying a damping
+        target_particle.velocity.x *= -collision_damping;
+    }
+        
+    // Case in which the particle collided with the bounds on Y-axis
+    if (abs(target_particle.position.y) > half_bounds.y)
+    {
+        // Setting the position y to the maximum
+        target_particle.position.y = half_bounds.y * sign(target_particle.position.y);
+        // Flipping the velocity sign and applying a damping
+        target_particle.velocity.y *= -collision_damping;
+    }
+}
+
+// Converts given density into pressure
+float convertDensityToPressure(float density)
+{
+    return (density - rest_density) * stiffness;
+}
+
+// Calculate the shared pressure between two densities
+float calculateSharedPressure(float first_density, float second_density)
+{
+    // Converting both densities to pressure 
+    float first_pressure = convertDensityToPressure(first_density);
+    float second_pressure = convertDensityToPressure(second_density);
+
+    // Computing the pressure that respects Newton's Third Law of Motion (as explained by Sebastian Lague)
+    return (first_pressure + second_pressure) / 2;
+}
+
+[numthreads(256, 1, 1)]
+void calculatePredictedPosition(uint id : SV_DispatchThreadID)
+{
+    // Extracting the target particle
+    particle next_target_particle;
+    if(is_ping_active == 1)
+        next_target_particle = particles_buffer_ping[id];
+    else
+        next_target_particle = particles_buffer_pong[id];
+
+    // Computing the predicted position
+    next_target_particle.predicted_position = next_target_particle.position + next_target_particle.velocity * delta_time;
+    
+    // Updating the particle in the StructuredBuffer
+    if(is_ping_active == 1)
+        particles_buffer_pong[id] = next_target_particle;
+    else
+        particles_buffer_ping[id] = next_target_particle;
+}
+
+[numthreads(256, 1, 1)]
+void calculateDensity(uint id : SV_DispatchThreadID)
+{
+    // Extracting the particle from the global array
+    particle next_target_particle;
+    if(is_ping_active == 1)
+        next_target_particle = particles_buffer_pong[id];
+    else
+        next_target_particle = particles_buffer_ping[id];
+    
+    // Initializing the density of the target particle
+    float density = 0.0f;
+
+    // Linear scan of all the particles
+    for(int i = 0; i < particles_amount; i++)
+    {
+        // Extracting a copy of next current particle
+        particle next_current_particle;
+        if(is_ping_active == 1)
+            next_current_particle = particles_buffer_pong[i];
+        else
+            next_current_particle = particles_buffer_ping[i];
+        
+        // Computing the vector between the current particle and the target
+        float2 diff_vector = next_current_particle.predicted_position - next_target_particle.predicted_position;
+
+        // Computing the squared distance
+        float sqr_distance = dot(diff_vector, diff_vector);
+
+        // If the particle is outside kernel radius, continue
+        if(sqr_distance >= sqr_kernel_radius)
+            continue;
+
+        // Adding the current particle influence to the target particle density
+        density += particle_mass * poly6(sqr_distance);
+    }
+
+    // Updating target particle density
+    next_target_particle.density = density;
+
+    // Updating the particle in the StructuredBuffer
+    if(is_ping_active == 1)
+        particles_buffer_pong[id] = next_target_particle;
+    else
+        particles_buffer_ping[id] = next_target_particle;
+}
+
+[numthreads(256, 1, 1)]
+void calculateDeltaVelocity(uint id : SV_DispatchThreadID)
+{
+    // Extracting the target particle and next target particle from the global array
+    particle target_particle;
+    particle next_target_particle;
+    if(is_ping_active == 1)
+    {
+        target_particle = particles_buffer_ping[id];
+        next_target_particle = particles_buffer_pong[id];
+    }
+    else
+    {
+        target_particle = particles_buffer_pong[id];
+        next_target_particle = particles_buffer_ping[id];
+    }
+    
+    // Initializing the new acceleration of the target particle
+    float2 force = 0.0f;
+
+    // Linear scan of all the particles
+    for(uint i = 0; i < particles_amount; i++)
+    {
+        // Skipping calculation for the particle by itself
+        if(id == i)
+            continue;
+        
+        // Extracting a copy of current particle
+        particle current_particle;
+        particle next_current_particle;
+        if(is_ping_active == 1)
+        {
+            current_particle = particles_buffer_ping[i];
+            next_current_particle = particles_buffer_pong[i];
+        }
+        else
+        {
+            current_particle = particles_buffer_pong[i];
+            next_current_particle = particles_buffer_ping[i];
+        }
+        
+        // Computing the vector between the current particle and the target
+        float2 diff_vector = next_current_particle.predicted_position - next_target_particle.predicted_position;
+
+        // Computing the squared distance
+        float sqr_distance = dot(diff_vector, diff_vector);
+
+        // If the particle is outside kernel radius, continue
+        if(sqr_distance >= sqr_kernel_radius || sqr_distance == 0)
+            continue;
+
+        // Computing the distance
+        float distance = sqrt(sqr_distance);
+        
+        // Computing the viscosity's influence of the current particle
+        float viscosity_influence = viscosity_laplacian(distance);
+
+        // Computing the difference between velocities
+        float2 velocities_difference = current_particle.velocity - target_particle.velocity;
+        
+        // Adding the result to the force
+        force += particle_mass * viscosity_influence * viscosity * velocities_difference / next_current_particle.density;
+
+        // Computing the direction between the current particle and the point of interest
+        float2 pressure_direction = distance == 0 ?
+            float2(1, 0)
+            : diff_vector / distance;
+
+        // Evaluating the slope of the kernel at the given distance
+        float kernel_slope = spiky_gradient(distance);
+        
+        // Computing the shared pressure force
+        float shared_pressure = calculateSharedPressure(next_current_particle.density, next_target_particle.density);
+
+        // Computing the applied force using both pressure and viscosity
+        force += particle_mass * shared_pressure * kernel_slope * pressure_direction / next_current_particle.density;
+    }
+
+    // Computing the acceleration caused by the density field forces and multiplying it by delta time
+    next_target_particle.velocity += (force / target_particle.density + float2(0, -1) * gravity) * delta_time;
+    
+    // Updating the position of the particle
+    next_target_particle.position += target_particle.velocity * delta_time;
+    
+    // Collision detection
+    resolveCollision(next_target_particle);
+
+    // Updating the particle in the StructuredBuffer
+    if(is_ping_active == 1)
+        particles_buffer_pong[id] = next_target_particle;
+    else
+        particles_buffer_ping[id] = next_target_particle;
+}
+
+void simulationStep(uint id : SV_DispatchThreadID)
+{
+    // Extracting the particle from the currently active buffer
+    particle target_particle;
+    if(is_ping_active == 1)
+        target_particle = particles_buffer_ping[id];
+    else
+        target_particle = particles_buffer_pong[id];
+
+    // Computing the densities
+    
+}
