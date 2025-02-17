@@ -13,10 +13,13 @@ Shader "Custom/Particle"
         
         Pass
         {
+            ZWrite On
+            ZTest LEqual
             Blend SrcAlpha OneMinusSrcAlpha
             
             CGPROGRAM
             #pragma vertex vert
+            #pragma geometry geom
             #pragma fragment frag
             #pragma target 5.0;
 
@@ -28,23 +31,35 @@ Shader "Custom/Particle"
                 float2 uv : TEXCOORD0;
             };
 
-            struct v2f
+            // struct v2f
+            // {
+            //     float4 vertex : SV_POSITION;
+            //     float2 uv : TEXCOORD0;
+            //     float4 color : COLOR;
+            // };
+
+            struct v2g
             {
-                float4 vertex : SV_POSITION;
+                float4 clip_pos : SV_POSITION;
+                float4 color : COLOR;
+            };
+
+            struct g2f
+            {
+                float4 clip_pos : SV_POSITION;
                 float2 uv : TEXCOORD0;
                 float4 color : COLOR;
             };
 
             struct particle
             {
-                float2 position;
-                float2 predicted_position;
-                float2 velocity;
-                float2 acceleration;
+                float3 position;
+                float3 predicted_position;
+                float3 velocity;
+                float3 acceleration;
                 float density;
             };
             
-
             // Data received from Properties
             float4 _Color;
             float _MaxVelocity;
@@ -60,31 +75,32 @@ Shader "Custom/Particle"
             StructuredBuffer<particle> particles_buffer_pong;
             
             // Vertex shader
-            v2f vert (appdata input, uint instanceID : SV_InstanceID)
+            v2g vert (uint instanceID : SV_InstanceID)
             {
                 // Initializing the output struct
-                v2f output;
-
-                // Setting the UV coordinates
-                output.uv = input.uv;
-
+                v2g output;
+                
                 // Extracting the particle from the buffer
-                particle current_particle;
+                particle current_particle = particles_buffer_ping[instanceID];
 
-                if(is_ping_active == 1)
-                    current_particle = particles_buffer_pong[instanceID];
-                else
-                    current_particle = particles_buffer_pong[instanceID];
+                // Extracting the particle from the active buffer
+                // if(is_ping_active == 1)
+                //     current_particle = particles_buffer_ping[instanceID];
+                // else
+                //     current_particle = particles_buffer_pong[instanceID];
 
-                // Extracting the position of the particle
-                float3 particle_world_position = float3(current_particle.position, 0);
+                // Transforming the particle position in object space
+                output.clip_pos = UnityObjectToClipPos(float4(current_particle.position, 1));
+                output.clip_pos.x += instanceID / 1000.0;
+                
                 // Translating the vertex world position by the particle position
-                float3 shifted_vertex_world_position = particle_world_position + mul(unity_ObjectToWorld,
-                    input.vertex * particle_radius);
-                // Transforming the vertex in object space
-                float3 shifted_vertex_object_position = mul(unity_WorldToObject, float4(shifted_vertex_world_position, 1));
-                // Transforming the vertex in clip space, ready for rasterization
-                output.vertex = UnityObjectToClipPos(shifted_vertex_object_position);
+                // float3 shifted_vertex_world_position = current_particle.position + mul(unity_ObjectToWorld,
+                //     input.vertex * particle_radius);
+                // // Transforming the vertex in object space
+                // float3 shifted_vertex_object_position = mul(unity_WorldToObject,
+                //     float4(shifted_vertex_world_position, 1));
+                // // Transforming the vertex in clip space, ready for rasterization
+                // output.vertex = UnityObjectToClipPos(shifted_vertex_object_position);
 
                 // Extracting the magnitude of the particle's speed
                 float speed = length(current_particle.velocity);
@@ -98,8 +114,52 @@ Shader "Custom/Particle"
                 return output;
             }
 
+            // Geometry shader
+            [maxvertexcount(6)]
+            void geom(point v2g input [1], inout TriangleStream<g2f> triangle_stream)
+            {
+                // Extracting the world position from the struct provided by vertex shader
+                float4 clip_pos = input[0].clip_pos;
+
+                // Initializing the offset
+                float offset = particle_radius;
+                
+                // Initializing the quad
+                g2f quad[4];
+
+                // Computing the bottom left vertex
+                quad[0].uv = float2(0, 0);
+                quad[0].color = input[0].color;
+                quad[0].clip_pos = clip_pos + float4(-offset, -offset, 0, 0);
+
+                // Computing the bottom right vertex
+                quad[1].uv = float2(1, 0);
+                quad[1].color = input[0].color;
+                quad[1].clip_pos = clip_pos + float4( offset, -offset, 0, 0);
+
+                // Computing the top left vertex
+                quad[2].uv = float2(0, 1);
+                quad[2].color = input[0].color;
+                quad[2].clip_pos = clip_pos + float4(-offset,  offset, 0, 0);
+
+                // Computing the top right vertex
+                quad[3].uv = float2(1, 1);
+                quad[3].color = input[0].color;
+                quad[3].clip_pos = clip_pos + float4( offset,  offset, 0, 0);
+
+                // Appending the bottom triangle
+                triangle_stream.Append(quad[0]);
+                triangle_stream.Append(quad[1]);
+                triangle_stream.Append(quad[2]);
+
+                // Appending the top triangle
+                triangle_stream.Append(quad[2]);
+                triangle_stream.Append(quad[3]);
+                triangle_stream.Append(quad[1]);
+            }
+            
             // Fragment shader
-            float4 frag (v2f input) : SV_Target
+            float4 frag (g2f input) : SV_Target
             {
                 // Mapping UV space from [0, 1] to [-1, 1] for a smoother radius computation
                 float2 centre_offset = (input.uv - 0.5) * 2;

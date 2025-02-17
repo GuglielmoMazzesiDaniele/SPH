@@ -536,7 +536,7 @@ public class FluidSimulation : MonoBehaviour
         var renderingParameters = new RenderParams(particleMaterial);
         
         // Render the particles
-        Graphics.RenderMeshPrimitives(renderingParameters, _particleMesh, 0, particlesAmount);
+        Graphics.RenderPrimitives(renderingParameters, MeshTopology.Points, particlesAmount);
     }
     
     #endregion
