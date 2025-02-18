@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -30,7 +31,6 @@ public class FluidSimulation : MonoBehaviour
     [SerializeField] public float stiffness;
     [SerializeField] public float viscosity;
     [SerializeField] public uint simulationSubSteps;
-    [SerializeField] public IntegrationMethod integrationMethod;
     [SerializeField] public ComputeShader simulationComputeShader;
 
     [Header("Optimization")] 
@@ -45,26 +45,10 @@ public class FluidSimulation : MonoBehaviour
 
     #region CPU Related Fields
 
-    [Serializable]
-    private struct Particle
-    {
-        public Vector3 position;
-        public Vector3 predictedPosition;
-        public Vector3 velocity;
-        public Vector3 acceleration;
-        public float density;
-    }
-    
     public enum ParticlesInitialization
     {
         Grid,
         Random
-    }
-
-    public enum IntegrationMethod
-    {
-        Euler,
-        LeapFrog
     }
     
     private struct SpatialEntry
@@ -74,7 +58,10 @@ public class FluidSimulation : MonoBehaviour
     }
     
     // Particles related fields
-    private Particle[] _particles;
+    private Vector3[] _positions;
+    private Vector3[] _predictedPositions;
+    private Vector3[] _velocities;
+    private float[] _densities;
     
     // Bounds related fields
     private Vector3 _halfBounds;
@@ -133,6 +120,8 @@ public class FluidSimulation : MonoBehaviour
     private int _collisionDampingID;
     
     private int _gravityID;
+
+    private int _particleRadiusID;
     
     private int _poly6NormalizationID;
     private int _spikyGradientFirstTermID;
@@ -150,8 +139,8 @@ public class FluidSimulation : MonoBehaviour
 
     #region GPU Related Fields
     
-    private ComputeBuffer _particlesBufferPing;
-    private ComputeBuffer _particlesBufferPong;
+    private ComputeBuffer _positionsBuffer;
+    private ComputeBuffer _velocitiesBuffer;
 
     private Texture2D _speedGradientTexture;
 
@@ -193,8 +182,8 @@ public class FluidSimulation : MonoBehaviour
     private void InitializeParticleShader()
     {
         // Assigning the buffer to the shader
-        particleMaterial.SetBuffer("particles_buffer_ping", _particlesBufferPing);
-        particleMaterial.SetBuffer("particles_buffer_pong", _particlesBufferPing);
+        particleMaterial.SetBuffer("positions", _positionsBuffer);
+        particleMaterial.SetBuffer("velocities", _velocitiesBuffer);
         
         // Initializing the particles gradient texture
         _speedGradientTexture = new Texture2D(speedGradientTextureWidth, 1);
@@ -227,15 +216,9 @@ public class FluidSimulation : MonoBehaviour
         // Recomputing the squared kernel value
         _sqrKernelRadius = kernelRadius * kernelRadius;
         
-        // Recomputing the volume of the kernels - 2D
-        // TODO: 3D conversion of the simulation
-        // _poly6Normalization = 4.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 8));
-        // _spikyGradientNormalization = -30.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 5));
-        // _viscosityLaplacianNormalization = 20.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 5));
-        
         // Recomputing the volume of the kernels - 3D
         _poly6Normalization = 315.0f / (64.0f * Mathf.PI * Mathf.Pow(kernelRadius, 9));
-        _spikyGradientNormalization = -45.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 6));
+        _spikyGradientNormalization = - 45.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 6));
         _viscosityLaplacianNormalization = 45.0f / (Mathf.PI * Mathf.Pow(kernelRadius, 6));
     }
 
@@ -273,14 +256,17 @@ public class FluidSimulation : MonoBehaviour
     private void InitializeParticles()
     {
         // Initializing the particles related arrays
-        _particles = new Particle[particlesAmount];
+        _positions = new Vector3[particlesAmount];
+        _predictedPositions = new Vector3[particlesAmount];
+        _velocities = new Vector3[particlesAmount];
+        _densities = new float[particlesAmount];
         
         // Initializing the gravity acceleration
         _gravityAcceleration = gravity * Vector3.down;
         
         // Initializing the compute buffer for the GPU
-        _particlesBufferPing = new ComputeBuffer(particlesAmount, (3 * 4 + 1) * sizeof(float));
-        _particlesBufferPong = new ComputeBuffer(particlesAmount, (3 * 4 + 1) * sizeof(float));
+        _positionsBuffer = new ComputeBuffer(particlesAmount, 3 * sizeof(float));
+        _velocitiesBuffer = new ComputeBuffer(particlesAmount, 3 * sizeof(float));
         
         // Initializing the particles position based on the algorithm selected via editor
         switch (initializationAlgorithm)
@@ -294,7 +280,7 @@ public class FluidSimulation : MonoBehaviour
                     var randomZ = (UnityEngine.Random.value - 0.5f) * bounds.z;
                     
                     // Assigning the new position
-                    _particles[i].position = new Vector3(randomX, randomY, randomZ);
+                    _positions[i] = new Vector3(randomX, randomY, randomZ);
                 }
                 break;
             
@@ -318,35 +304,14 @@ public class FluidSimulation : MonoBehaviour
                     var y = (yIndex - particlesPerRow / 2.0f + 0.5f) * spacing;
                     var z = (zIndex - particlesPerRow / 2.0f + 0.5f) * spacing;
 
-                    _particles[i].position = new Vector3(x, y, z);
+                    _positions[i] = new Vector3(x, y, z);
                 }
                 break;
         }
         
-        // Initializing the particles acceleration if LeapFrog is enabled
-        if (integrationMethod == IntegrationMethod.LeapFrog)
-        {
-            // Updating the spatial grid
-            UpdateSpatialLookup();
-            
-            // Calculating the density at particles position
-            Parallel.For(0, particlesAmount, currentIndex =>
-            {
-                // Computing the density at particle position
-                CalculateDensity(ref _particles[currentIndex]);
-            });
-            
-            // Calculating the acceleration pf particles
-            Parallel.For(0, particlesAmount, currentIndex =>
-            {
-                _particles[currentIndex].acceleration = CalculateAcceleration(currentIndex);
-            });
-        }
-        
         // Filling the buffer
-        // TODO: 3D Conversion
-        _particlesBufferPing.SetData(_particles);
-        _particlesBufferPong.SetData(_particles);
+        _positionsBuffer.SetData(_positions);
+        _velocitiesBuffer.SetData(_velocities);
         
         // Setting the active buffer to ping
         _isPingActive = 1;
@@ -369,6 +334,8 @@ public class FluidSimulation : MonoBehaviour
         
         _gravityID = Shader.PropertyToID("gravity");
 
+        _particleRadiusID = Shader.PropertyToID("particle_radius");
+
         _kernelRadiusID = Shader.PropertyToID("kernel_radius");
         _sqrKernelRadiusID = Shader.PropertyToID("sqr_kernel_radius");
         
@@ -387,14 +354,6 @@ public class FluidSimulation : MonoBehaviour
         _densityKernelID = simulationComputeShader.FindKernel("calculateDensity");
         _deltaVelocityKernelID = simulationComputeShader.FindKernel("calculateDeltaVelocity");
         
-        // Assigning the buffer to the kernel
-        simulationComputeShader.SetBuffer(_predictedPositionKernelID, "particles_buffer_ping", _particlesBufferPing);
-        simulationComputeShader.SetBuffer(_predictedPositionKernelID, "particles_buffer_pong", _particlesBufferPong);
-        simulationComputeShader.SetBuffer(_densityKernelID, "particles_buffer_ping", _particlesBufferPing);
-        simulationComputeShader.SetBuffer(_densityKernelID, "particles_buffer_pong", _particlesBufferPong);
-        simulationComputeShader.SetBuffer(_deltaVelocityKernelID, "particles_buffer_ping", _particlesBufferPing);
-        simulationComputeShader.SetBuffer(_deltaVelocityKernelID, "particles_buffer_pong", _particlesBufferPong);
-
         UpdateComputeShaderVariables();
     }
 
@@ -445,8 +404,8 @@ public class FluidSimulation : MonoBehaviour
     private void OnDestroy()
     {
         // Releasing Compute Buffers to prevent memory leaks
-        _particlesBufferPing?.Release();
-        _particlesBufferPong?.Release();
+        _positionsBuffer?.Release();
+        _velocitiesBuffer?.Release();
     }
 
     /// <summary>
@@ -471,16 +430,7 @@ public class FluidSimulation : MonoBehaviour
         // Running multiple simulation steps 
         for (var i = 0; i < simulationSubSteps; i++)
         {
-            switch (integrationMethod)
-            {
-                default:
-                case IntegrationMethod.Euler:
-                    EulerSimulationStep(subDeltaTime);
-                    break;
-                case IntegrationMethod.LeapFrog:
-                    LeapFrogSimulationStep(subDeltaTime);
-                    break;
-            }
+            EulerSimulationStep(subDeltaTime);
         }
 
         // Returning 
@@ -517,12 +467,12 @@ public class FluidSimulation : MonoBehaviour
             return;
         
         // Updating the uniform Radius on GPU
-        particleMaterial.SetFloat("particle_radius", particleRadius);
+        particleMaterial.SetFloat(_particleRadiusID, particleRadius);
         particleMaterial.SetInt(_isPingActiveID, _isPingActive);
 
         // Updating position buffer on GPU
-        // TODO: GPU SIDE RENDERING
-        _particlesBufferPing.SetData(_particles);
+        _positionsBuffer.SetData(_positions);
+        _velocitiesBuffer.SetData(_velocities);
         
         // Setting the rendering parameters
         var renderingParameters = new RenderParams(particleMaterial);
@@ -545,11 +495,10 @@ public class FluidSimulation : MonoBehaviour
         Parallel.For(0, particlesAmount, currentIndex => 
         {
             // Applying gravity to the particle velocity
-            _particles[currentIndex].velocity +=  _gravityAcceleration * deltaTime;
+            _velocities[currentIndex] +=  _gravityAcceleration * deltaTime;
             
             // Predicting the next particle position
-            _particles[currentIndex].predictedPosition = _particles[currentIndex].position 
-                                                         + _particles[currentIndex].velocity * deltaTime;
+            _predictedPositions[currentIndex] = _positions[currentIndex] + _velocities[currentIndex] * deltaTime;
         });
         
         // Updating the spatial lookup array
@@ -559,74 +508,27 @@ public class FluidSimulation : MonoBehaviour
         Parallel.For(0, particlesAmount, currentIndex =>
         {
             // Computing the density at particle position
-            CalculateDensity(ref _particles[currentIndex]);
+            CalculateDensity(currentIndex);
         });
 
         // Adding the current acceleration to the particle's velocity
         Parallel.For(0, particlesAmount, currentIndex =>
         {
             // Adding the acceleration to the particle velocity
-            _particles[currentIndex].velocity += CalculateAcceleration(currentIndex) * deltaTime;
+            _velocities[currentIndex] += CalculateAcceleration(currentIndex) * deltaTime;
         });
         
         // Updating the particles position and resolving collision
         Parallel.For(0, particlesAmount, currentIndex =>
         {
             // Updating position
-            _particles[currentIndex].position += _particles[currentIndex].velocity * deltaTime;
+            _positions[currentIndex] += _velocities[currentIndex] * deltaTime;
 
             // Resolving collisions
-            ResolveCollisions(ref _particles[currentIndex].position, ref _particles[currentIndex].velocity);
+            ResolveCollisions(ref _positions[currentIndex], ref _velocities[currentIndex]);
         });
     }
 
-    /// <summary>
-    /// Execute a simulation step with the given delta time using Leapfrog based integration.
-    /// </summary>
-    /// <param name="deltaTime">The delta time from the previous simulation step.</param>
-    private void LeapFrogSimulationStep(float deltaTime)
-    {
-        // Compute the half step velocity
-        Parallel.For(0, particlesAmount, currentIndex => 
-        {
-            // Applying gravity to the particle velocity
-            _particles[currentIndex].velocity +=  0.5f * deltaTime * _particles[currentIndex].acceleration;
-        });
-        
-        // Computing the new position using the half step velocity
-        Parallel.For(0, particlesAmount, currentIndex =>
-        {
-            // Updating position
-            _particles[currentIndex].position += deltaTime * _particles[currentIndex].velocity;
-        });
-        
-        // Updating the spatial lookup array
-        UpdateSpatialLookup();
-        
-        // Calculating the density at particles position
-        Parallel.For(0, particlesAmount, currentIndex =>
-        {
-            // Computing the density at particle position
-            CalculateDensity(ref _particles[currentIndex]);
-        });
-        
-        // Computing the acceleration at new position
-        Parallel.For(0, particlesAmount, currentIndex =>
-        {
-            // Computing and the storing the acceleration at the half step position
-            _particles[currentIndex].acceleration = CalculateAcceleration(currentIndex);
-        });
-        
-        // Applying the acceleration to the velocity
-        Parallel.For(0, particlesAmount, currentIndex =>
-        {
-            _particles[currentIndex].velocity += 0.5f * deltaTime * _particles[currentIndex].acceleration;
-            
-            // Resolving collisions
-            ResolveCollisions(ref _particles[currentIndex].position, ref _particles[currentIndex].velocity);
-        });
-    }
-    
     #endregion
 
     #region Spatial Lookup
@@ -639,9 +541,7 @@ public class FluidSimulation : MonoBehaviour
         // Creating the unordered spatial lookup array
         Parallel.For(0, particlesAmount, currentIndex => {
             // Mapping the particle position to a cell in the grid
-            var cellCoordinates = integrationMethod == IntegrationMethod.Euler ?
-                PositionToCellCoordinates(_particles[currentIndex].predictedPosition)
-                : PositionToCellCoordinates(_particles[currentIndex].position);
+            var cellCoordinates = PositionToCellCoordinates(_predictedPositions[currentIndex]);
             
             // Calculating the cell key
             var cellKey = GetKeyFromHash(HashCell(cellCoordinates));
@@ -770,14 +670,12 @@ public class FluidSimulation : MonoBehaviour
     /// <summary>
     /// Calculate the density at the position of the particle corresponding to given index.
     /// </summary>
-    /// <param name="targetParticle">The index of the particle to evaluate.</param>
+    /// <param name="targetParticleIndex">The index of the particle to evaluate.</param>
     /// <returns>The density at the particle position</returns>
-    private void CalculateDensity(ref Particle targetParticle)
+    private void CalculateDensity(int targetParticleIndex)
     {
         // Computing the coordinates of the grid cell containing the given position
-        var cellCoordinates = integrationMethod == IntegrationMethod.Euler? 
-            PositionToCellCoordinates(targetParticle.predictedPosition)
-            : PositionToCellCoordinates(targetParticle.position);
+        var cellCoordinates = PositionToCellCoordinates(_predictedPositions[targetParticleIndex]);
         
         // Initializing the density of the target particle
         var density = 0.0f;
@@ -798,13 +696,11 @@ public class FluidSimulation : MonoBehaviour
             for (var i = startIndex; i < particlesAmount && _spatialLookup[i].cellKey == currentCellKey; i++)
             {
                 // Extracting a reference to the current particle
-                ref var currentParticle = ref _particles[_spatialLookup[i].particleIndex];
+                var currentParticleIndex = _spatialLookup[i].particleIndex;
                 
                 // Computing the distance between the current particle and the particle of interest
-                var sqrDistance = 
-                    integrationMethod == IntegrationMethod.Euler? 
-                        (currentParticle.predictedPosition - targetParticle.predictedPosition).sqrMagnitude :
-                        (currentParticle.position - targetParticle.position).sqrMagnitude;
+                var sqrDistance = (_predictedPositions[currentParticleIndex] 
+                                   - _predictedPositions[targetParticleIndex]).sqrMagnitude;
             
                 // Case in which the particle is outside the kernel radius or affecting itself
                 if(sqrDistance >= _sqrKernelRadius)
@@ -818,7 +714,7 @@ public class FluidSimulation : MonoBehaviour
             }
         }
         
-        targetParticle.density = density;
+        _densities[targetParticleIndex] = density;
     }
 
     #endregion
@@ -832,13 +728,8 @@ public class FluidSimulation : MonoBehaviour
     /// <returns></returns>
     private Vector3 CalculateAcceleration(int targetParticleIndex)
     {
-        // Extracting a reference to the current particle
-        ref var targetParticle = ref _particles[targetParticleIndex];
-
         // Computing the coordinates of the grid cell containing the given position
-        var cellCoordinates = integrationMethod == IntegrationMethod.Euler? 
-            PositionToCellCoordinates(targetParticle.predictedPosition)
-            : PositionToCellCoordinates(targetParticle.position);
+        var cellCoordinates = PositionToCellCoordinates(_predictedPositions[targetParticleIndex]);
 
         // Initializing the density
         var force = Vector3.zero;
@@ -865,13 +756,9 @@ public class FluidSimulation : MonoBehaviour
                 if (currentParticleIndex == targetParticleIndex)
                     continue;
                 
-                // Extracting a reference to the current particle
-                ref var currentParticle = ref _particles[currentParticleIndex];
-            
                 // Computing the vector from target particle to current particle
-                var targetToCurrent = integrationMethod == IntegrationMethod.Euler? 
-                    targetParticle.predictedPosition - currentParticle.predictedPosition
-                    : targetParticle.position - currentParticle.position;
+                var targetToCurrent =  _predictedPositions[targetParticleIndex] 
+                                       - _predictedPositions[currentParticleIndex];
                 
                 // Case in which the particle is outside the kernel radius
                 if(targetToCurrent.sqrMagnitude >= _sqrKernelRadius)
@@ -884,11 +771,11 @@ public class FluidSimulation : MonoBehaviour
                 var viscosityInfluence = ViscosityLaplacian(distance);
                 
                 // Computing the difference between velocities
-                var velocitiesDifference = currentParticle.velocity - targetParticle.velocity;
+                var velocitiesDifference = _velocities[currentParticleIndex] - _velocities[targetParticleIndex];
                 
                 // Adding the result to the force
                 force += particleMass * viscosityInfluence * viscosity * velocitiesDifference 
-                         / currentParticle.density;
+                         / _densities[currentParticleIndex];
                 
                 // Computing the direction between the current particle and the point of interest
                 var pressureDirection = distance == 0 ?
@@ -899,13 +786,16 @@ public class FluidSimulation : MonoBehaviour
                 var kernelSlope = SpikyGradient(distance);
             
                 // Computing the shared pressure force
-                var sharedPressure = CalculateSharedPressure(currentParticle.density, targetParticle.density);
+                var sharedPressure = CalculateSharedPressure(_densities[currentParticleIndex],
+                    _densities[targetParticleIndex]);
                 
                 // Computing the applied force using both pressure and viscosity
-                force -= particleMass * sharedPressure * kernelSlope * pressureDirection / currentParticle.density;
+                force -= particleMass * sharedPressure * kernelSlope * pressureDirection 
+                         / _densities[currentParticleIndex];
             }
         }
-        return force / targetParticle.density + _gravityAcceleration;
+        
+        return force / _densities[targetParticleIndex] + _gravityAcceleration;
     }
     
     /// <summary>
