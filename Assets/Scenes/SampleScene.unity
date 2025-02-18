@@ -206,7 +206,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -5}
+  m_LocalPosition: {x: 0, y: 0, z: -3}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -285,17 +285,17 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 16acc8ad9dc14dd41ab2e0c1c4bcc941, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  particleRadius: 0.05
+  particleRadius: 0.03
   particleMass: 1
   collisionDamping: 0.5
-  particlesAmount: 1000
+  particlesAmount: 3200
   particlesSpacing: 0
   initializationAlgorithm: 1
   kernelRadius: 0.1
-  bounds: {x: 1.5, y: 1.5, z: 1.5}
+  bounds: {x: 4, y: 1.5, z: 1.5}
   gravity: 0
-  restDensity: 400
-  stiffness: 40
+  restDensity: 1000
+  stiffness: 50
   viscosity: 0.1
   simulationSubSteps: 3
   integrationMethod: 0

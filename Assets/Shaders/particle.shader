@@ -31,13 +31,6 @@ Shader "Custom/Particle"
                 float2 uv : TEXCOORD0;
             };
 
-            // struct v2f
-            // {
-            //     float4 vertex : SV_POSITION;
-            //     float2 uv : TEXCOORD0;
-            //     float4 color : COLOR;
-            // };
-
             struct v2g
             {
                 float4 clip_pos : SV_POSITION;
@@ -92,15 +85,6 @@ Shader "Custom/Particle"
                 // Transforming the particle position in object space
                 output.clip_pos = UnityObjectToClipPos(float4(current_particle.position, 1));
                 
-                // Translating the vertex world position by the particle position
-                // float3 shifted_vertex_world_position = current_particle.position + mul(unity_ObjectToWorld,
-                //     input.vertex * particle_radius);
-                // // Transforming the vertex in object space
-                // float3 shifted_vertex_object_position = mul(unity_WorldToObject,
-                //     float4(shifted_vertex_world_position, 1));
-                // // Transforming the vertex in clip space, ready for rasterization
-                // output.vertex = UnityObjectToClipPos(shifted_vertex_object_position);
-
                 // Extracting the magnitude of the particle's speed
                 float speed = length(current_particle.velocity);
                 // Normalizing the particle speed in range [0, 1], clamping it to 1 using saturate function

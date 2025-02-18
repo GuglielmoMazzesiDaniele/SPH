@@ -149,8 +149,7 @@ public class FluidSimulation : MonoBehaviour
     #endregion
 
     #region GPU Related Fields
-
-    private Mesh _particleMesh;
+    
     private ComputeBuffer _particlesBufferPing;
     private ComputeBuffer _particlesBufferPong;
 
@@ -193,13 +192,6 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void InitializeParticleShader()
     {
-        // Initializing the particle mesh and material
-        // _particleMesh = MeshGenerator.CreateQuadMesh();
-        // TODO: 3D conversion of the simulation
-        var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        _particleMesh = sphere.GetComponent<MeshFilter>().mesh;
-        Destroy(sphere);
-        
         // Assigning the buffer to the shader
         particleMaterial.SetBuffer("particles_buffer_ping", _particlesBufferPing);
         particleMaterial.SetBuffer("particles_buffer_pong", _particlesBufferPing);
