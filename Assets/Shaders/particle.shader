@@ -13,7 +13,7 @@ Shader "Custom/Particle"
         
         Pass
         {
-            ZWrite On
+            ZWrite Off
             ZTest LEqual
             Blend SrcAlpha OneMinusSrcAlpha
             
@@ -75,7 +75,7 @@ Shader "Custom/Particle"
             StructuredBuffer<particle> particles_buffer_pong;
             
             // Vertex shader
-            v2g vert (uint instanceID : SV_InstanceID)
+            v2g vert (uint instanceID : SV_VertexID)
             {
                 // Initializing the output struct
                 v2g output;
@@ -91,7 +91,6 @@ Shader "Custom/Particle"
 
                 // Transforming the particle position in object space
                 output.clip_pos = UnityObjectToClipPos(float4(current_particle.position, 1));
-                output.clip_pos.x += instanceID / 1000.0;
                 
                 // Translating the vertex world position by the particle position
                 // float3 shifted_vertex_world_position = current_particle.position + mul(unity_ObjectToWorld,
@@ -122,7 +121,7 @@ Shader "Custom/Particle"
                 float4 clip_pos = input[0].clip_pos;
 
                 // Initializing the offset
-                float offset = particle_radius;
+                float2 offset = particle_radius * float2(1, _ScreenParams.x / _ScreenParams.y);
                 
                 // Initializing the quad
                 g2f quad[4];
@@ -130,22 +129,22 @@ Shader "Custom/Particle"
                 // Computing the bottom left vertex
                 quad[0].uv = float2(0, 0);
                 quad[0].color = input[0].color;
-                quad[0].clip_pos = clip_pos + float4(-offset, -offset, 0, 0);
+                quad[0].clip_pos = clip_pos + float4(-offset.x, -offset.y, 0, 0);
 
                 // Computing the bottom right vertex
                 quad[1].uv = float2(1, 0);
                 quad[1].color = input[0].color;
-                quad[1].clip_pos = clip_pos + float4( offset, -offset, 0, 0);
+                quad[1].clip_pos = clip_pos + float4( offset.x, -offset.y, 0, 0);
 
                 // Computing the top left vertex
                 quad[2].uv = float2(0, 1);
                 quad[2].color = input[0].color;
-                quad[2].clip_pos = clip_pos + float4(-offset,  offset, 0, 0);
+                quad[2].clip_pos = clip_pos + float4(-offset.x,  offset.y, 0, 0);
 
                 // Computing the top right vertex
                 quad[3].uv = float2(1, 1);
                 quad[3].color = input[0].color;
-                quad[3].clip_pos = clip_pos + float4( offset,  offset, 0, 0);
+                quad[3].clip_pos = clip_pos + float4( offset.x,  offset.y, 0, 0);
 
                 // Appending the bottom triangle
                 triangle_stream.Append(quad[0]);
