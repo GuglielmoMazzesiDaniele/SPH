@@ -285,10 +285,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 16acc8ad9dc14dd41ab2e0c1c4bcc941, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  particleRadius: 0.04
+  particleRadius: 0.03
   particleMass: 1
   collisionDamping: 0.5
-  particlesAmount: 1200
+  particlesAmount: 1500
   particlesSpacing: 0
   initializationAlgorithm: 1
   kernelRadius: 0.1
@@ -298,7 +298,6 @@ MonoBehaviour:
   stiffness: 750
   viscosity: 0.01
   simulationSubSteps: 4
-  integrationMethod: 0
   simulationComputeShader: {fileID: 7200000, guid: 0f55c9019893dbe4e884f0ea549ef16b, type: 3}
   spatialGridCellSize: 0.1
   particleMaterial: {fileID: 2100000, guid: 8712fed4b32e58e4cb0d0285d55755b8, type: 2}

@@ -13,9 +13,8 @@ Shader "Custom/Particle"
         
         Pass
         {
-            ZWrite Off
+            ZWrite On
             ZTest LEqual
-            Blend SrcAlpha OneMinusSrcAlpha
             
             CGPROGRAM
             #pragma vertex vert
@@ -43,15 +42,6 @@ Shader "Custom/Particle"
                 float2 uv : TEXCOORD0;
                 float4 color : COLOR;
             };
-
-            struct particle
-            {
-                float3 position;
-                float3 predicted_position;
-                float3 velocity;
-                float3 acceleration;
-                float density;
-            };
             
             // Data received from Properties
             float4 _Color;
@@ -64,29 +54,20 @@ Shader "Custom/Particle"
             int is_ping_active;
 
             // GPU RELATED DATA
-            StructuredBuffer<particle> particles_buffer_ping;
-            StructuredBuffer<particle> particles_buffer_pong;
+            StructuredBuffer<float3> positions;
+            StructuredBuffer<float3> velocities;
             
             // Vertex shader
-            v2g vert (uint instanceID : SV_VertexID)
+            v2g vert (uint vertex_id : SV_VertexID)
             {
                 // Initializing the output struct
                 v2g output;
                 
-                // Extracting the particle from the buffer
-                particle current_particle = particles_buffer_ping[instanceID];
-
-                // Extracting the particle from the active buffer
-                // if(is_ping_active == 1)
-                //     current_particle = particles_buffer_ping[instanceID];
-                // else
-                //     current_particle = particles_buffer_pong[instanceID];
-
                 // Transforming the particle position in object space
-                output.clip_pos = UnityObjectToClipPos(float4(current_particle.position, 1));
+                output.clip_pos = UnityWorldToClipPos(float4(positions[vertex_id], 1));
                 
                 // Extracting the magnitude of the particle's speed
-                float speed = length(current_particle.velocity);
+                float speed = length(velocities[vertex_id]);
                 // Normalizing the particle speed in range [0, 1], clamping it to 1 using saturate function
                 float speed_n = saturate(speed / _MaxVelocity);
                 // Computing the vertex color by sampling from the gradient texture generate by the CPU, using a linear
@@ -104,8 +85,20 @@ Shader "Custom/Particle"
                 // Extracting the world position from the struct provided by vertex shader
                 float4 clip_pos = input[0].clip_pos;
 
+                // Computing the auxiliary variables used to create the quad
+                float aspect_ratio = _ScreenParams.x / _ScreenParams.y;
+                float2 scale;
+                if(aspect_ratio >= 1.0)
+                {
+                    scale = float2 (1.0, aspect_ratio);
+                }
+                else
+                {
+                    scale = float2 (aspect_ratio, 1.0);
+                }
+                
                 // Initializing the offset
-                float2 offset = particle_radius * float2(1, _ScreenParams.x / _ScreenParams.y);
+                float2 offset = particle_radius * scale;
                 
                 // Initializing the quad
                 g2f quad[4];
@@ -156,8 +149,26 @@ Shader "Custom/Particle"
                 // Computing the alpha value of the pixel using a smoothstep function
                 float alpha = 1 - smoothstep(1 - delta, 1 + delta, squared_distance);
 
-                // Returning the pixel value
-                return float4(input.color.rgb, alpha);
+                // Discarding pixels that have an alpha too low
+                if (alpha <= 0.5)
+                    discard;
+
+                // Simulating a normal using UV coordinates (faking sphere normals)
+                float3 normal = normalize(float3(centre_offset, sqrt(saturate(1.0 - squared_distance))));
+
+                // Initializing a directional light
+                float3 directional_light = normalize(float3(0, -1, 1));
+
+                // Compute Lambertian diffuse lighting
+                float diffuse = max(dot(normal, directional_light), 0.0);
+                
+                // Add ambient lighting
+                float ambient = 0.2;
+
+                // Simple Phong model without specular reflection
+                float lighting = ambient + diffuse;
+
+                return float4(input.color.rgb * lighting, alpha);
             }
             ENDCG
         }
