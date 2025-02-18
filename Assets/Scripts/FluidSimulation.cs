@@ -133,6 +133,11 @@ public class FluidSimulation : MonoBehaviour
     private int _restDensityID;
     private int _viscosityID;
 
+    private int _positionsBufferID;
+    private int _predictedPositionsBufferID;
+    private int _velocitiesBufferID;
+    private int _densitiesBufferID;
+
     private int _isPingActiveID;
     
     #endregion
@@ -140,7 +145,9 @@ public class FluidSimulation : MonoBehaviour
     #region GPU Related Fields
     
     private ComputeBuffer _positionsBuffer;
+    private ComputeBuffer _predictedPositionsBuffer;
     private ComputeBuffer _velocitiesBuffer;
+    private ComputeBuffer _densitiesBuffer;
 
     private Texture2D _speedGradientTexture;
 
@@ -182,8 +189,8 @@ public class FluidSimulation : MonoBehaviour
     private void InitializeParticleShader()
     {
         // Assigning the buffer to the shader
-        particleMaterial.SetBuffer("positions", _positionsBuffer);
-        particleMaterial.SetBuffer("velocities", _velocitiesBuffer);
+        particleMaterial.SetBuffer(_positionsBufferID, _positionsBuffer);
+        particleMaterial.SetBuffer(_velocitiesBufferID, _velocitiesBuffer);
         
         // Initializing the particles gradient texture
         _speedGradientTexture = new Texture2D(speedGradientTextureWidth, 1);
@@ -264,10 +271,6 @@ public class FluidSimulation : MonoBehaviour
         // Initializing the gravity acceleration
         _gravityAcceleration = gravity * Vector3.down;
         
-        // Initializing the compute buffer for the GPU
-        _positionsBuffer = new ComputeBuffer(particlesAmount, 3 * sizeof(float));
-        _velocitiesBuffer = new ComputeBuffer(particlesAmount, 3 * sizeof(float));
-        
         // Initializing the particles position based on the algorithm selected via editor
         switch (initializationAlgorithm)
         {
@@ -296,7 +299,7 @@ public class FluidSimulation : MonoBehaviour
                 {
                     // Computing the indexes of the current particle
                     var zIndex = i / (particlesPerRow * particlesPerRow);
-                    var yIndex = (i / particlesPerRow) % particlesPerRow;
+                    var yIndex = (i / particlesPerRow) % particlesPerCol;
                     var xIndex = i % particlesPerRow;
 
                     // Computing the new coordinates
@@ -309,10 +312,6 @@ public class FluidSimulation : MonoBehaviour
                 break;
         }
         
-        // Filling the buffer
-        _positionsBuffer.SetData(_positions);
-        _velocitiesBuffer.SetData(_velocities);
-        
         // Setting the active buffer to ping
         _isPingActive = 1;
     }
@@ -322,6 +321,18 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void InitializeComputeShader()
     {
+        // Initializing the compute buffer for the GPU
+        _positionsBuffer = new ComputeBuffer(particlesAmount, 3 * sizeof(float));
+        _predictedPositionsBuffer = new ComputeBuffer(particlesAmount, 3 * sizeof(float));
+        _velocitiesBuffer = new ComputeBuffer(particlesAmount, 3 * sizeof(float));
+        _densitiesBuffer = new ComputeBuffer(particlesAmount, sizeof(float));
+        
+        // Filling the buffer
+        _positionsBuffer.SetData(_positions);
+        _predictedPositionsBuffer.SetData(_predictedPositions);
+        _velocitiesBuffer.SetData(_velocities);
+        _densitiesBuffer.SetData(_densities);
+        
         // CONSTANTS
         
         // Simulation related constants
@@ -347,12 +358,33 @@ public class FluidSimulation : MonoBehaviour
         _stiffnessID = Shader.PropertyToID("stiffness");
         _viscosityID = Shader.PropertyToID("viscosity");
 
+        _positionsBufferID = Shader.PropertyToID("positions");
+        _predictedPositionsBufferID = Shader.PropertyToID("predicted_positions");
+        _velocitiesBufferID = Shader.PropertyToID("velocities");
+        _densitiesBufferID = Shader.PropertyToID("densities");
+
         _isPingActiveID = Shader.PropertyToID("is_ping_active");
         
         // Caching the reference ID of the ComputeShader's kernels
         _predictedPositionKernelID = simulationComputeShader.FindKernel("calculatePredictedPosition");
         _densityKernelID = simulationComputeShader.FindKernel("calculateDensity");
         _deltaVelocityKernelID = simulationComputeShader.FindKernel("calculateDeltaVelocity");
+        
+        // Setting the buffers
+        simulationComputeShader.SetBuffer(_predictedPositionKernelID, _positionsBufferID, _positionsBuffer);
+        simulationComputeShader.SetBuffer(_predictedPositionKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        simulationComputeShader.SetBuffer(_predictedPositionKernelID, _velocitiesBufferID, _velocitiesBuffer);
+        simulationComputeShader.SetBuffer(_predictedPositionKernelID, _densitiesBufferID, _densitiesBuffer);
+        
+        simulationComputeShader.SetBuffer(_densityKernelID, _positionsBufferID, _positionsBuffer);
+        simulationComputeShader.SetBuffer(_densityKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        simulationComputeShader.SetBuffer(_densityKernelID, _velocitiesBufferID, _velocitiesBuffer);
+        simulationComputeShader.SetBuffer(_densityKernelID, _densitiesBufferID, _densitiesBuffer);
+        
+        simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _positionsBufferID, _positionsBuffer);
+        simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _velocitiesBufferID, _velocitiesBuffer);
+        simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _densitiesBufferID, _densitiesBuffer);
         
         UpdateComputeShaderVariables();
     }
@@ -381,6 +413,7 @@ public class FluidSimulation : MonoBehaviour
         simulationComputeShader.SetFloat(_stiffnessID, stiffness);
         simulationComputeShader.SetFloat(_viscosityID, viscosity);
         
+        // Setting ComputeShader's ints
         simulationComputeShader.SetInt(_isPingActiveID, _isPingActive);
     }
     
@@ -405,7 +438,9 @@ public class FluidSimulation : MonoBehaviour
     {
         // Releasing Compute Buffers to prevent memory leaks
         _positionsBuffer?.Release();
+        _predictedPositionsBuffer?.Release();
         _velocitiesBuffer?.Release();
+        _densitiesBuffer?.Release();
     }
 
     /// <summary>
@@ -427,15 +462,6 @@ public class FluidSimulation : MonoBehaviour
         
         _gravityAcceleration = gravity * Vector2.down;
         
-        // Running multiple simulation steps 
-        for (var i = 0; i < simulationSubSteps; i++)
-        {
-            EulerSimulationStep(subDeltaTime);
-        }
-
-        // Returning 
-        return;
-        
         // TODO: TESTING GPU SIDE RENDERING
         
         // Computing the gravity vector
@@ -454,6 +480,14 @@ public class FluidSimulation : MonoBehaviour
             _isPingActive = _isPingActive == 1 ? 0 : 1;
             
             simulationComputeShader.SetInt(_isPingActiveID, _isPingActive);
+        }
+
+        return;
+        
+        // Running multiple simulation steps 
+        for (var i = 0; i < simulationSubSteps; i++)
+        {
+            EulerSimulationStep(subDeltaTime);
         }
     }
 
