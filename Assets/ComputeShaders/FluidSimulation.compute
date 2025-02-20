@@ -17,9 +17,10 @@ int is_ping_active;
 // CPU PROVIDED DATA
 
 // Simulation related fields
+int particles_amount;
+
 float delta_time;
 float gravity;
-float particles_amount;
 float particle_mass;
 float rest_density;
 float stiffness;

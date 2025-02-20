@@ -1,0 +1,37 @@
+#pragma kernel bitonicSort
+
+// Input/Output Buffer
+RWStructuredBuffer<uint> keys; 
+
+int particles_amount;
+
+[numthreads(256, 1, 1)]
+void bitonicSort(uint3 id : SV_DispatchThreadID)
+{
+    uint index = id.x;
+    
+    for (uint size = 2; size <= particles_amount; size *= 2)
+    {
+        for (uint stride = size / 2; stride > 0; stride /= 2)
+        {
+            // Find the partner index
+            uint partner = index ^ stride;
+            // Ensure valid indices
+            if (partner > index) 
+            {
+                // Ascending or Descending order
+                uint ascending = (index & size) == 0; 
+                uint val1 = keys[index];
+                uint val2 = keys[partner];
+
+                // Compare and swap
+                if (val1 > val2 == ascending) 
+                {
+                    keys[index] = val2;
+                    keys[partner] = val1;
+                }
+            }
+            GroupMemoryBarrierWithGroupSync();
+        }
+    }
+}

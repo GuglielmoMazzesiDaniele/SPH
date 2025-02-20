@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.Serialization;
+using Random = UnityEngine.Random;
 using Vector2 = UnityEngine.Vector2;
 using Vector3 = UnityEngine.Vector3;
 
@@ -32,6 +34,7 @@ public class FluidSimulation : MonoBehaviour
     [SerializeField] public float viscosity;
     [SerializeField] public uint simulationSubSteps;
     [SerializeField] public ComputeShader simulationComputeShader;
+    [SerializeField] public ComputeShader optimizationComputeShader;
 
     [Header("Optimization")] 
     [SerializeField] public float spatialGridCellSize;
@@ -62,6 +65,7 @@ public class FluidSimulation : MonoBehaviour
     private Vector3[] _predictedPositions;
     private Vector3[] _velocities;
     private float[] _densities;
+    [SerializeField] private uint[] _keys;
     
     // Bounds related fields
     private Vector3 _halfBounds;
@@ -148,6 +152,7 @@ public class FluidSimulation : MonoBehaviour
     private ComputeBuffer _predictedPositionsBuffer;
     private ComputeBuffer _velocitiesBuffer;
     private ComputeBuffer _densitiesBuffer;
+    private ComputeBuffer _keysBuffer;
 
     private Texture2D _speedGradientTexture;
 
@@ -181,6 +186,17 @@ public class FluidSimulation : MonoBehaviour
         
         // Initializing the variables related to the rendering pipeline
         InitializeParticleShader();
+
+        _keysBuffer = new ComputeBuffer(256, sizeof(uint));
+        _keys = new uint[256];
+        for (var i = 0; i < 256; i++)
+            _keys[i] = (uint) (Random.value * 256);
+        _keysBuffer.SetData(_keys);
+        optimizationComputeShader.SetBuffer(optimizationComputeShader.FindKernel("bitonicSort"), "keys", _keysBuffer);
+        optimizationComputeShader.SetInt("particles_amount", 256);
+        optimizationComputeShader.Dispatch(optimizationComputeShader.FindKernel("bitonicSort"), 
+            256 / 256 + 1, 1, 1);
+        _keysBuffer.GetData(_keys);
     }
 
     /// <summary>
@@ -278,9 +294,9 @@ public class FluidSimulation : MonoBehaviour
                 for (var i = 0; i < particlesAmount; i++)
                 {
                     // Computing the new coordinates
-                    var randomX = (UnityEngine.Random.value - 0.5f) * bounds.x;
-                    var randomY = (UnityEngine.Random.value - 0.5f) * bounds.y;
-                    var randomZ = (UnityEngine.Random.value - 0.5f) * bounds.z;
+                    var randomX = (Random.value - 0.5f) * bounds.x;
+                    var randomY = (Random.value - 0.5f) * bounds.y;
+                    var randomZ = (Random.value - 0.5f) * bounds.z;
                     
                     // Assigning the new position
                     _positions[i] = new Vector3(randomX, randomY, randomZ);
@@ -336,7 +352,7 @@ public class FluidSimulation : MonoBehaviour
         // CONSTANTS
         
         // Simulation related constants
-        simulationComputeShader.SetFloat("particles_amount", particlesAmount);
+        simulationComputeShader.SetInt("particles_amount", particlesAmount);
         simulationComputeShader.SetFloat("particle_mass", particleMass);
         
         // Caching the reference ID of the Shaders variables
@@ -471,9 +487,27 @@ public class FluidSimulation : MonoBehaviour
             // Setting the delta time in the GPU
             simulationComputeShader.SetFloat("delta_time", subDeltaTime);
             
-            // Dispatching the ComputeShader
+            // Dispatching the first kernel
             simulationComputeShader.Dispatch(_predictedPositionKernelID, particlesAmount / 256 + 1, 1, 1);
+            
+            // Creating a fence to wait for the first kernel
+            var positionsFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
+                SynchronisationStageFlags.ComputeProcessing);
+
+            // Waiting for the fence and then dispatch the next kernel
+            Graphics.WaitOnAsyncGraphicsFence(positionsFence);
+            
+            // Dispatching the second kernel
             simulationComputeShader.Dispatch(_densityKernelID, particlesAmount / 256 + 1, 1, 1);
+            
+            // Creating a fence to wait for the second kernel
+            var densityFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
+                SynchronisationStageFlags.ComputeProcessing);
+
+            // Waiting for the fence and then dispatch the next kernel
+            Graphics.WaitOnAsyncGraphicsFence(densityFence);
+            
+            // Dispatching the third kernel
             simulationComputeShader.Dispatch(_deltaVelocityKernelID, particlesAmount / 256 + 1, 1, 1);
             
             // Flipping the active buffer
@@ -505,8 +539,8 @@ public class FluidSimulation : MonoBehaviour
         particleMaterial.SetInt(_isPingActiveID, _isPingActive);
 
         // Updating position buffer on GPU
-        _positionsBuffer.SetData(_positions);
-        _velocitiesBuffer.SetData(_velocities);
+        // _positionsBuffer.SetData(_positions);
+        // _velocitiesBuffer.SetData(_velocities);
         
         // Setting the rendering parameters
         var renderingParameters = new RenderParams(particleMaterial);

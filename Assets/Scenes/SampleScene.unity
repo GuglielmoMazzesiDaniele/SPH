@@ -288,17 +288,18 @@ MonoBehaviour:
   particleRadius: 0.04
   particleMass: 1
   collisionDamping: 0.5
-  particlesAmount: 2500
+  particlesAmount: 10000
   particlesSpacing: 0
   initializationAlgorithm: 1
-  kernelRadius: 0.11
-  bounds: {x: 2.5, y: 1.5, z: 1}
+  kernelRadius: 0.15
+  bounds: {x: 8, y: 2.5, z: 2}
   gravity: 10
-  restDensity: 1000
-  stiffness: 750
+  restDensity: 650
+  stiffness: 225
   viscosity: 0.01
-  simulationSubSteps: 4
+  simulationSubSteps: 7
   simulationComputeShader: {fileID: 7200000, guid: 0f55c9019893dbe4e884f0ea549ef16b, type: 3}
+  optimizationComputeShader: {fileID: 7200000, guid: e8012c23e167145488553b3fcad9b81a, type: 3}
   spatialGridCellSize: 0.05
   particleMaterial: {fileID: 2100000, guid: 8712fed4b32e58e4cb0d0285d55755b8, type: 2}
   particleSpeedGradient:
@@ -333,6 +334,7 @@ MonoBehaviour:
     m_NumAlphaKeys: 2
   speedGradientTextureWidth: 256
   renderSimulation: 1
+  _keys: 
 --- !u!4 &1558477423
 Transform:
   m_ObjectHideFlags: 0
