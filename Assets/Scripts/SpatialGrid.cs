@@ -20,7 +20,7 @@ public class SpatialGrid
     private ComputeShader _spatialGridComputeShader;
     
     // Amount of particles currently active in the simulation
-    private int _particlesAmount;
+    private readonly int _particlesAmount;
     
     // GPU CONSTANTS
     private const float GPUGroupSize = 256.0f;
@@ -28,19 +28,21 @@ public class SpatialGrid
     // GPU Kernels IDs
     private int _resetHistogramKernelID;
     private int _calculateHistogramKernelID;
+    private int _espScanKernelID;
+    private int _espCombineKernelID;
     
     // GPU variables IDs
-    private int _spatialKeysBufferID = Shader.PropertyToID("spatial_keys");
-    private int _spatialIndicesBufferID = Shader.PropertyToID("spatial_indices");
+    private readonly int _spatialKeysBufferID = Shader.PropertyToID("spatial_keys");
+    private readonly int _spatialIndicesBufferID = Shader.PropertyToID("spatial_indices");
     private int _spatialOffsetsBufferID = Shader.PropertyToID("spatial_offsets");
 
     private int _sortedKeysBufferID = Shader.PropertyToID("sorted_keys");
     private int _sortedIndicesBufferID = Shader.PropertyToID("sorted_indices");
-    private int _keysHistogramBufferID = Shader.PropertyToID("keys_histogram");
+    private readonly int _keysHistogramBufferID = Shader.PropertyToID("keys_histogram");
 
-    private int _targetBufferID = Shader.PropertyToID("target");
-    private int _groupSumsBufferID = Shader.PropertyToID("group_sums");
-    private int _targetSizeID = Shader.PropertyToID("target_size");
+    private readonly int _espTargetBufferID = Shader.PropertyToID("esp_target");
+    private readonly int _espGroupSumsBufferID = Shader.PropertyToID("esp_groups_sums");
+    private readonly int _espTargetSizeID = Shader.PropertyToID("esp_target_size");
     
     /// <summary>
     /// Initializes the spatial grid with the given particles amount.
@@ -73,6 +75,9 @@ public class SpatialGrid
         // Computing the histogram of the keys value
         _spatialGridComputeShader.Dispatch(_calculateHistogramKernelID,
             Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
+        
+        // Applying ESP to keys histogram buffer
+        ExclusivePrefixSum(_keysHistogramBuffer);
     }
     
     /// <summary>
@@ -94,6 +99,54 @@ public class SpatialGrid
         foreach (var buffer in _buffersPool)
         {
             buffer.Value?.Release();
+        }
+    }
+
+    /// <summary>
+    /// Given a target buffer, executes the exclusive prefix sum on it.
+    /// CAREFUL: this function recursively computes the effects of GPU groups to sequentials groups.
+    /// </summary>
+    /// <param name="target"></param>
+    private void ExclusivePrefixSum(ComputeBuffer target)
+    {
+        // Computing the number of groups needed to handle the target buffer
+        var requiredGroupsAmount = Mathf.CeilToInt(target.count / 2.0f / 256.0f);
+        
+        // Trying to obtain a buffer from the pool having the required size
+        if (!_buffersPool.TryGetValue(requiredGroupsAmount, out var espGroupsSums))
+        {
+            // Initializing the esp groups sums buffer
+            espGroupsSums = new ComputeBuffer(requiredGroupsAmount, sizeof(uint));
+            // Adding the buffer to the pool
+            _buffersPool.Add(requiredGroupsAmount, espGroupsSums);
+        }
+        
+        // Setting the buffers to the esp scan kernel
+        _spatialGridComputeShader.SetBuffer(_espScanKernelID, _espTargetBufferID, target);
+        _spatialGridComputeShader.SetBuffer(_espScanKernelID, _espGroupSumsBufferID, espGroupsSums);
+        
+        // Setting the current esp target size
+        _spatialGridComputeShader.SetInt(_espTargetSizeID, target.count);
+        
+        // Dispatching the esp scan kernel
+        _spatialGridComputeShader.Dispatch(_espScanKernelID, requiredGroupsAmount, 1, 1);
+        
+        // If more than one group was required to execute the esp algorithm, the total sum of each group must be
+        // increased by the total sum of all previous groups. To do so, esp is applied to the group sum buffer as well.
+        if (requiredGroupsAmount > 1)
+        {
+            // Recursively calculate esp also on the buffer containing the total sum of each group
+            ExclusivePrefixSum(espGroupsSums);
+            
+            // Setting the buffers to the esp combine kernel
+            _spatialGridComputeShader.SetBuffer(_espCombineKernelID, _espTargetBufferID, target);
+            _spatialGridComputeShader.SetBuffer(_espCombineKernelID, _espGroupSumsBufferID, espGroupsSums);
+            
+            // Setting the current esp target size
+            _spatialGridComputeShader.SetInt(_espTargetSizeID, target.count);
+            
+            // Dispatching the esp combine kernel
+            _spatialGridComputeShader.Dispatch(_espCombineKernelID, requiredGroupsAmount, 1, 1);
         }
     }
 
@@ -124,12 +177,14 @@ public class SpatialGrid
         // Setting the compute shaders kernel IDs
         _resetHistogramKernelID = _spatialGridComputeShader.FindKernel("reset_histogram");
         _calculateHistogramKernelID = _spatialGridComputeShader.FindKernel("calculate_histogram");
+        _espScanKernelID = _spatialGridComputeShader.FindKernel("esp_scan");
+        _espCombineKernelID = _spatialGridComputeShader.FindKernel("esp_combine");
         
-        // Setting the buffer for the resetHistogram kernel
+        // Setting the buffers for the resetHistogram kernel
         _spatialGridComputeShader.SetBuffer(_resetHistogramKernelID, _keysHistogramBufferID, _keysHistogramBuffer);
         _spatialGridComputeShader.SetBuffer(_resetHistogramKernelID, _spatialIndicesBufferID, SpatialIndicesBuffer);
         
-        // Setting the buffer for the calculateHistogram kernel
+        // Setting the buffers for the calculateHistogram kernel
         _spatialGridComputeShader.SetBuffer(_calculateHistogramKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
         _spatialGridComputeShader.SetBuffer(_calculateHistogramKernelID, _keysHistogramBufferID, _keysHistogramBuffer);
     }

@@ -157,8 +157,11 @@ public class FluidSimulation : MonoBehaviour
     private int _spatialHashingKernelID;
     private int _densityKernelID;
     private int _deltaVelocityKernelID;
+
     #endregion
 
+    [SerializeField] public uint[] testArray;
+    
     #region Initialization
 
     /// <summary>
@@ -186,6 +189,14 @@ public class FluidSimulation : MonoBehaviour
         
         // Initializing the variables related to the rendering pipeline
         InitializeParticleShader();
+
+        testArray = new uint[particlesAmount];
+        _simulationComputeShader.Dispatch(_predictedPositionKernelID, 
+            Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);        
+        _simulationComputeShader.Dispatch(_spatialHashingKernelID, 
+            Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
+        _spatialGrid.UpdateSpatialLookup();
+        _spatialGrid._keysHistogramBuffer.GetData(testArray);
     }
 
     /// <summary>
@@ -469,11 +480,9 @@ public class FluidSimulation : MonoBehaviour
         // Computing a smaller delta time per substep
         var subDeltaTime = Time.fixedDeltaTime / simulationSubSteps;
         
+        // Computing the gravity vector
         _gravityAcceleration = gravity * Vector2.down;
         
-        // TODO: TESTING GPU SIDE RENDERING
-        
-        // Computing the gravity vector
         // Running multiple simulation steps 
         for (var i = 0; i < simulationSubSteps; i++)
         {
@@ -481,7 +490,8 @@ public class FluidSimulation : MonoBehaviour
             _simulationComputeShader.SetFloat("delta_time", subDeltaTime);
             
             // Dispatching the first kernel
-            _simulationComputeShader.Dispatch(_predictedPositionKernelID, particlesAmount / 256 + 1, 1, 1);
+            _simulationComputeShader.Dispatch(_predictedPositionKernelID, 
+                Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
             
             // Creating a fence to wait for the first kernel
             var positionsFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
@@ -491,7 +501,7 @@ public class FluidSimulation : MonoBehaviour
             Graphics.WaitOnAsyncGraphicsFence(positionsFence);
             
             // Dispatching the second kernel
-            _simulationComputeShader.Dispatch(_densityKernelID, particlesAmount / 256 + 1, 1, 1);
+            _simulationComputeShader.Dispatch(_densityKernelID, Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
             
             // Creating a fence to wait for the second kernel
             var densityFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
@@ -501,7 +511,7 @@ public class FluidSimulation : MonoBehaviour
             Graphics.WaitOnAsyncGraphicsFence(densityFence);
             
             // Dispatching the third kernel
-            _simulationComputeShader.Dispatch(_deltaVelocityKernelID, particlesAmount / 256 + 1, 1, 1);
+            _simulationComputeShader.Dispatch(_deltaVelocityKernelID, Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
         }
 
         return;
