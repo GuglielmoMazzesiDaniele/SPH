@@ -33,8 +33,6 @@ public class FluidSimulation : MonoBehaviour
     [SerializeField] public float stiffness;
     [SerializeField] public float viscosity;
     [SerializeField] public uint simulationSubSteps;
-    [SerializeField] public ComputeShader simulationComputeShader;
-    [SerializeField] public ComputeShader optimizationComputeShader;
 
     [Header("Optimization")] 
     [SerializeField] public float spatialGridCellSize;
@@ -45,7 +43,6 @@ public class FluidSimulation : MonoBehaviour
     [SerializeField] public int speedGradientTextureWidth;
     [SerializeField] public bool renderSimulation;
     
-
     #region CPU Related Fields
 
     public enum ParticlesInitialization
@@ -60,21 +57,20 @@ public class FluidSimulation : MonoBehaviour
         public int cellKey;
     }
     
+    // Reference to the simulation compute shader
+    private ComputeShader _simulationComputeShader;
+    
     // Particles related fields
     private Vector3[] _positions;
     private Vector3[] _predictedPositions;
     private Vector3[] _velocities;
     private float[] _densities;
-    [SerializeField] private uint[] _keys;
     
     // Bounds related fields
     private Vector3 _halfBounds;
     
     // Simulation related fields
     private Vector3 _gravityAcceleration;
-    
-    // Data structure related fields
-    private int _isPingActive;
     
     // Kernel related fields
     private float _sqrKernelRadius;
@@ -141,8 +137,6 @@ public class FluidSimulation : MonoBehaviour
     private int _predictedPositionsBufferID;
     private int _velocitiesBufferID;
     private int _densitiesBufferID;
-
-    private int _isPingActiveID;
     
     #endregion
 
@@ -155,6 +149,8 @@ public class FluidSimulation : MonoBehaviour
     private ComputeBuffer _keysBuffer;
 
     private Texture2D _speedGradientTexture;
+
+    private SpatialGrid _spatialGrid;
 
     private int _predictedPositionKernelID;
     private int _densityKernelID;
@@ -169,6 +165,9 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void Start()
     {
+        // Linking the simulation compute shader
+        _simulationComputeShader = Resources.Load<ComputeShader>("FluidSimulation");
+        
         // Initializing the variables related to optimization
         InitializeOptimization();
         
@@ -186,25 +185,6 @@ public class FluidSimulation : MonoBehaviour
         
         // Initializing the variables related to the rendering pipeline
         InitializeParticleShader();
-
-        const int particlesAmountBitonic = 128;
-        
-        _keysBuffer = new ComputeBuffer(particlesAmountBitonic, sizeof(uint));
-        _keys = new uint[particlesAmountBitonic];
-        
-        for (var i = 0; i < particlesAmountBitonic; i++)
-            _keys[i] = (uint) (Random.value * particlesAmountBitonic);
-        
-        _keysBuffer.SetData(_keys);
-        
-        optimizationComputeShader.SetBuffer(optimizationComputeShader.FindKernel("bitonicSort"), "keys", _keysBuffer);
-        optimizationComputeShader.SetInt("particles_amount", particlesAmountBitonic);
-        optimizationComputeShader.Dispatch(optimizationComputeShader.FindKernel("bitonicSort"), 
-            Mathf.Max(1, particlesAmountBitonic / 128), 1, 1);
-        
-        _keysBuffer.GetData(_keys);
-        
-        _keysBuffer.Release();
     }
 
     /// <summary>
@@ -267,6 +247,8 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void InitializeOptimization()
     {
+        // CPU
+        
         // Initializing the optimization related arrays
         _spatialLookup = new SpatialEntry[particlesAmount];
         _lookupStartIndex = new int[particlesAmount];
@@ -279,6 +261,9 @@ public class FluidSimulation : MonoBehaviour
         {
             _buckets[i] = new List<SpatialEntry>();
         }
+        
+        // GPU
+        _spatialGrid = new SpatialGrid(particlesAmount);
     }
 
     /// <summary>
@@ -335,9 +320,6 @@ public class FluidSimulation : MonoBehaviour
                 }
                 break;
         }
-        
-        // Setting the active buffer to ping
-        _isPingActive = 1;
     }
 
     /// <summary>
@@ -360,8 +342,8 @@ public class FluidSimulation : MonoBehaviour
         // CONSTANTS
         
         // Simulation related constants
-        simulationComputeShader.SetInt("particles_amount", particlesAmount);
-        simulationComputeShader.SetFloat("particle_mass", particleMass);
+        _simulationComputeShader.SetInt("particles_amount", particlesAmount);
+        _simulationComputeShader.SetFloat("particle_mass", particleMass);
         
         // Caching the reference ID of the Shaders variables
         _halfBoundsID = Shader.PropertyToID("half_bounds");
@@ -386,29 +368,27 @@ public class FluidSimulation : MonoBehaviour
         _predictedPositionsBufferID = Shader.PropertyToID("predicted_positions");
         _velocitiesBufferID = Shader.PropertyToID("velocities");
         _densitiesBufferID = Shader.PropertyToID("densities");
-
-        _isPingActiveID = Shader.PropertyToID("is_ping_active");
         
         // Caching the reference ID of the ComputeShader's kernels
-        _predictedPositionKernelID = simulationComputeShader.FindKernel("calculatePredictedPosition");
-        _densityKernelID = simulationComputeShader.FindKernel("calculateDensity");
-        _deltaVelocityKernelID = simulationComputeShader.FindKernel("calculateDeltaVelocity");
+        _predictedPositionKernelID = _simulationComputeShader.FindKernel("calculatePredictedPosition");
+        _densityKernelID = _simulationComputeShader.FindKernel("calculateDensity");
+        _deltaVelocityKernelID = _simulationComputeShader.FindKernel("calculateDeltaVelocity");
         
         // Setting the buffers
-        simulationComputeShader.SetBuffer(_predictedPositionKernelID, _positionsBufferID, _positionsBuffer);
-        simulationComputeShader.SetBuffer(_predictedPositionKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
-        simulationComputeShader.SetBuffer(_predictedPositionKernelID, _velocitiesBufferID, _velocitiesBuffer);
-        simulationComputeShader.SetBuffer(_predictedPositionKernelID, _densitiesBufferID, _densitiesBuffer);
+        _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _positionsBufferID, _positionsBuffer);
+        _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _velocitiesBufferID, _velocitiesBuffer);
+        _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _densitiesBufferID, _densitiesBuffer);
         
-        simulationComputeShader.SetBuffer(_densityKernelID, _positionsBufferID, _positionsBuffer);
-        simulationComputeShader.SetBuffer(_densityKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
-        simulationComputeShader.SetBuffer(_densityKernelID, _velocitiesBufferID, _velocitiesBuffer);
-        simulationComputeShader.SetBuffer(_densityKernelID, _densitiesBufferID, _densitiesBuffer);
+        _simulationComputeShader.SetBuffer(_densityKernelID, _positionsBufferID, _positionsBuffer);
+        _simulationComputeShader.SetBuffer(_densityKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        _simulationComputeShader.SetBuffer(_densityKernelID, _velocitiesBufferID, _velocitiesBuffer);
+        _simulationComputeShader.SetBuffer(_densityKernelID, _densitiesBufferID, _densitiesBuffer);
         
-        simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _positionsBufferID, _positionsBuffer);
-        simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
-        simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _velocitiesBufferID, _velocitiesBuffer);
-        simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _densitiesBufferID, _densitiesBuffer);
+        _simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _positionsBufferID, _positionsBuffer);
+        _simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        _simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _velocitiesBufferID, _velocitiesBuffer);
+        _simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _densitiesBufferID, _densitiesBuffer);
         
         UpdateComputeShaderVariables();
     }
@@ -419,26 +399,23 @@ public class FluidSimulation : MonoBehaviour
     private void UpdateComputeShaderVariables()
     {
         // Setting ComputeShader's vectors
-        simulationComputeShader.SetVector(_halfBoundsID, _halfBounds);
+        _simulationComputeShader.SetVector(_halfBoundsID, _halfBounds);
         
         // Setting ComputeShader's floats
-        simulationComputeShader.SetFloat(_collisionDampingID, collisionDamping);
+        _simulationComputeShader.SetFloat(_collisionDampingID, collisionDamping);
         
-        simulationComputeShader.SetFloat(_gravityID, gravity);
+        _simulationComputeShader.SetFloat(_gravityID, gravity);
         
-        simulationComputeShader.SetFloat(_kernelRadiusID, kernelRadius);
-        simulationComputeShader.SetFloat(_sqrKernelRadiusID, _sqrKernelRadius);
+        _simulationComputeShader.SetFloat(_kernelRadiusID, kernelRadius);
+        _simulationComputeShader.SetFloat(_sqrKernelRadiusID, _sqrKernelRadius);
         
-        simulationComputeShader.SetFloat(_poly6NormalizationID, _poly6Normalization);
-        simulationComputeShader.SetFloat(_spikyGradientFirstTermID, _spikyGradientNormalization);
-        simulationComputeShader.SetFloat(_viscosityLaplacianFirstTermID, _viscosityLaplacianNormalization);
+        _simulationComputeShader.SetFloat(_poly6NormalizationID, _poly6Normalization);
+        _simulationComputeShader.SetFloat(_spikyGradientFirstTermID, _spikyGradientNormalization);
+        _simulationComputeShader.SetFloat(_viscosityLaplacianFirstTermID, _viscosityLaplacianNormalization);
         
-        simulationComputeShader.SetFloat(_restDensityID, restDensity);
-        simulationComputeShader.SetFloat(_stiffnessID, stiffness);
-        simulationComputeShader.SetFloat(_viscosityID, viscosity);
-        
-        // Setting ComputeShader's ints
-        simulationComputeShader.SetInt(_isPingActiveID, _isPingActive);
+        _simulationComputeShader.SetFloat(_restDensityID, restDensity);
+        _simulationComputeShader.SetFloat(_stiffnessID, stiffness);
+        _simulationComputeShader.SetFloat(_viscosityID, viscosity);
     }
     
     #endregion
@@ -465,6 +442,9 @@ public class FluidSimulation : MonoBehaviour
         _predictedPositionsBuffer?.Release();
         _velocitiesBuffer?.Release();
         _densitiesBuffer?.Release();
+        
+        // Releasing the buffers allocated by the spatial grid
+        _spatialGrid?.Release();
     }
 
     /// <summary>
@@ -493,10 +473,10 @@ public class FluidSimulation : MonoBehaviour
         for (var i = 0; i < simulationSubSteps; i++)
         {
             // Setting the delta time in the GPU
-            simulationComputeShader.SetFloat("delta_time", subDeltaTime);
+            _simulationComputeShader.SetFloat("delta_time", subDeltaTime);
             
             // Dispatching the first kernel
-            simulationComputeShader.Dispatch(_predictedPositionKernelID, particlesAmount / 256 + 1, 1, 1);
+            _simulationComputeShader.Dispatch(_predictedPositionKernelID, particlesAmount / 256 + 1, 1, 1);
             
             // Creating a fence to wait for the first kernel
             var positionsFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
@@ -506,7 +486,7 @@ public class FluidSimulation : MonoBehaviour
             Graphics.WaitOnAsyncGraphicsFence(positionsFence);
             
             // Dispatching the second kernel
-            simulationComputeShader.Dispatch(_densityKernelID, particlesAmount / 256 + 1, 1, 1);
+            _simulationComputeShader.Dispatch(_densityKernelID, particlesAmount / 256 + 1, 1, 1);
             
             // Creating a fence to wait for the second kernel
             var densityFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
@@ -516,12 +496,7 @@ public class FluidSimulation : MonoBehaviour
             Graphics.WaitOnAsyncGraphicsFence(densityFence);
             
             // Dispatching the third kernel
-            simulationComputeShader.Dispatch(_deltaVelocityKernelID, particlesAmount / 256 + 1, 1, 1);
-            
-            // Flipping the active buffer
-            _isPingActive = _isPingActive == 1 ? 0 : 1;
-            
-            simulationComputeShader.SetInt(_isPingActiveID, _isPingActive);
+            _simulationComputeShader.Dispatch(_deltaVelocityKernelID, particlesAmount / 256 + 1, 1, 1);
         }
 
         return;
@@ -544,7 +519,6 @@ public class FluidSimulation : MonoBehaviour
         
         // Updating the uniform Radius on GPU
         particleMaterial.SetFloat(_particleRadiusID, particleRadius);
-        particleMaterial.SetInt(_isPingActiveID, _isPingActive);
 
         // Updating position buffer on GPU
         // _positionsBuffer.SetData(_positions);

@@ -1,9 +1,11 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel calculatePredictedPosition
+#pragma kernel calculateSpatialHash
 #pragma kernel calculateDensity
 #pragma kernel calculateDeltaVelocity
 
-// STRUCTS
+// CONSTANTS
+static const int thread_group_size = 256;
 
 // GPU RELATED DATA
 
@@ -12,7 +14,9 @@ RWStructuredBuffer<float3> positions;
 RWStructuredBuffer<float3> predicted_positions;
 RWStructuredBuffer<float3> velocities;
 RWStructuredBuffer<float> densities;
-int is_ping_active;
+
+// Spatial Hashing Grid's buffers
+RWStructuredBuffer<uint> spatial_keys;
 
 // CPU PROVIDED DATA
 
@@ -104,14 +108,44 @@ float calculateSharedPressure(float first_density, float second_density)
     return (first_pressure + second_pressure) / 2;
 }
 
-[numthreads(256, 1, 1)]
+// Given a position in world space, returns its corresponding spatial grid's hash value
+uint3 positionToCellCoordinates(float3 position)
+{
+    // Computing the coordinates with respect to the kernel radius
+    return  (uint3) (position / kernel_radius);
+}
+
+// Given a cell position in the spatial grid, returns its corresponding hash value mod particles_amount
+uint hashCell(uint3 cell_coords)
+{
+    // Multiplying the coordinates by three arbitrary prime number
+    uint a = cell_coords.x * 73856093;
+    uint b = cell_coords.y * 19349663;
+    uint c = cell_coords.z * 83492791;
+        
+    // Returning the hashed value
+    return (a ^ b ^ c) % particles_amount;
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void calculateSpatialHash(uint id : SV_DispatchThreadID)
+{
+    // Apply the process only using valid ids
+    if(id >= particles_amount)
+        return;
+
+    // Computing the cell in which the current particle belongs and store its corresponding hash value
+    spatial_keys[id] = hashCell(positionToCellCoordinates(predicted_positions[id]));
+}
+
+[numthreads(thread_group_size, 1, 1)]
 void calculatePredictedPosition(uint id : SV_DispatchThreadID)
 {
     // Computing the predicted position
     predicted_positions[id] = positions[id] + velocities[id] * delta_time + float3(0, -1, 0) * gravity;
 }
 
-[numthreads(256, 1, 1)]
+[numthreads(thread_group_size, 1, 1)]
 void calculateDensity(uint target_particle_index : SV_DispatchThreadID)
 {
     // Initializing the density of the target particle
@@ -138,7 +172,7 @@ void calculateDensity(uint target_particle_index : SV_DispatchThreadID)
     densities[target_particle_index] = density;
 }
 
-[numthreads(256, 1, 1)]
+[numthreads(thread_group_size, 1, 1)]
 void calculateDeltaVelocity(uint target_particle_index : SV_DispatchThreadID)
 {
     // Initializing the new acceleration of the target particle

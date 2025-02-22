@@ -1,0 +1,59 @@
+// KERNELS
+#pragma kernel reset_histogram_and_indices
+#pragma kernel calculate_histogram
+
+// CONSTANTS
+static const int thread_group_size = 256;
+
+// VARIABLES
+
+// Core buffers, used by the simulation
+RWStructuredBuffer<uint> spatial_keys;
+RWStructuredBuffer<uint> spatial_indices;
+RWStructuredBuffer<uint> spatial_offsets;
+
+// Auxiliary buffers, used by the sorting algorithm
+RWStructuredBuffer<uint> sorted_keys;
+RWStructuredBuffer<uint> sorted_indices;
+
+// Core buffer of the algorithm.
+// At the beginning of the sorting process it contains the histogram of the spatial grid hashed keys
+// distribution within the simulation.
+// The simulation is in charge of filling the distribution before calling the sorting algorithm.
+// To the buffer is then applied an exclusive prefix sum parallel algorithm. This effectively results in knowing the
+// initial array within the global array of each histogram's bin. This information is the used to compute the offsets
+// per key and to scatter the original data into a sorted buffer.
+RWStructuredBuffer<uint> keys_histogram;
+
+// Auxiliary buffer, used by the exclusive prefix sum algorithm
+RWStructuredBuffer<uint> group_sums;
+
+// Variables provided by the CPU
+int particles_amount;
+
+[numthreads(thread_group_size, 1, 1)]
+void reset_histogram_and_indices(uint id : SV_DispatchThreadID)
+{
+    // Resetting only valid thread ids
+    if(id >= particles_amount)
+        return;
+
+    // Resetting the bins of the histogram
+    keys_histogram[id] = 0;
+    // Resetting the order of the spatial indices
+    spatial_indices[id] = id;
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void calculate_histogram(uint id : SV_DispatchThreadID)
+{
+    // Calculating using only valid thread ids
+    if(id >= particles_amount)
+        return;
+
+    // Obtaining the key of the current thread from the spatial keys buffer
+    uint key = spatial_keys[id];;
+
+    // Increasing the corresponding bin within the histogram by one
+    InterlockedAdd(keys_histogram[key], 1);
+}
