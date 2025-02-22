@@ -291,7 +291,7 @@ MonoBehaviour:
   particlesAmount: 10000
   particlesSpacing: 0
   initializationAlgorithm: 1
-  kernelRadius: 0.15
+  kernelRadius: 0.1
   bounds: {x: 8, y: 2.5, z: 2}
   gravity: 10
   restDensity: 650

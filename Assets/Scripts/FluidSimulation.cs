@@ -187,16 +187,24 @@ public class FluidSimulation : MonoBehaviour
         // Initializing the variables related to the rendering pipeline
         InitializeParticleShader();
 
-        _keysBuffer = new ComputeBuffer(256, sizeof(uint));
-        _keys = new uint[256];
-        for (var i = 0; i < 256; i++)
-            _keys[i] = (uint) (Random.value * 256);
+        const int particlesAmountBitonic = 128;
+        
+        _keysBuffer = new ComputeBuffer(particlesAmountBitonic, sizeof(uint));
+        _keys = new uint[particlesAmountBitonic];
+        
+        for (var i = 0; i < particlesAmountBitonic; i++)
+            _keys[i] = (uint) (Random.value * particlesAmountBitonic);
+        
         _keysBuffer.SetData(_keys);
+        
         optimizationComputeShader.SetBuffer(optimizationComputeShader.FindKernel("bitonicSort"), "keys", _keysBuffer);
-        optimizationComputeShader.SetInt("particles_amount", 256);
+        optimizationComputeShader.SetInt("particles_amount", particlesAmountBitonic);
         optimizationComputeShader.Dispatch(optimizationComputeShader.FindKernel("bitonicSort"), 
-            256 / 256 + 1, 1, 1);
+            Mathf.Max(1, particlesAmountBitonic / 128), 1, 1);
+        
         _keysBuffer.GetData(_keys);
+        
+        _keysBuffer.Release();
     }
 
     /// <summary>
