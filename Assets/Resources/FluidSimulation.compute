@@ -9,7 +9,7 @@ static const int thread_group_size = 256;
 
 // GPU RELATED DATA
 
-// Buffer containing the simulation
+// Buffer containing the data of the simulation
 RWStructuredBuffer<float3> positions;
 RWStructuredBuffer<float3> predicted_positions;
 RWStructuredBuffer<float3> velocities;

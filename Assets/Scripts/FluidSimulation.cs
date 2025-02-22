@@ -138,6 +138,8 @@ public class FluidSimulation : MonoBehaviour
     private int _velocitiesBufferID;
     private int _densitiesBufferID;
     
+    private int _spatialKeysBufferID = Shader.PropertyToID("spatial_keys");
+    
     #endregion
 
     #region GPU Related Fields
@@ -146,16 +148,15 @@ public class FluidSimulation : MonoBehaviour
     private ComputeBuffer _predictedPositionsBuffer;
     private ComputeBuffer _velocitiesBuffer;
     private ComputeBuffer _densitiesBuffer;
-    private ComputeBuffer _keysBuffer;
 
     private Texture2D _speedGradientTexture;
 
     private SpatialGrid _spatialGrid;
 
     private int _predictedPositionKernelID;
+    private int _spatialHashingKernelID;
     private int _densityKernelID;
     private int _deltaVelocityKernelID;
-
     #endregion
 
     #region Initialization
@@ -181,7 +182,7 @@ public class FluidSimulation : MonoBehaviour
         InitializeParticles();
         
         // Initializing the variables of the compute shader
-        InitializeComputeShader();
+        InitializeSimulationComputeShader();
         
         // Initializing the variables related to the rendering pipeline
         InitializeParticleShader();
@@ -325,9 +326,9 @@ public class FluidSimulation : MonoBehaviour
     /// <summary>
     /// Initializes the IDs of the ComputeShader's variables and initializes them.
     /// </summary>
-    private void InitializeComputeShader()
+    private void InitializeSimulationComputeShader()
     {
-        // Initializing the compute buffer for the GPU
+        // Initializing the compute buffer for the simulation on GPU
         _positionsBuffer = new ComputeBuffer(particlesAmount, 3 * sizeof(float));
         _predictedPositionsBuffer = new ComputeBuffer(particlesAmount, 3 * sizeof(float));
         _velocitiesBuffer = new ComputeBuffer(particlesAmount, 3 * sizeof(float));
@@ -371,6 +372,7 @@ public class FluidSimulation : MonoBehaviour
         
         // Caching the reference ID of the ComputeShader's kernels
         _predictedPositionKernelID = _simulationComputeShader.FindKernel("calculatePredictedPosition");
+        _spatialHashingKernelID = _simulationComputeShader.FindKernel("calculateSpatialHash");
         _densityKernelID = _simulationComputeShader.FindKernel("calculateDensity");
         _deltaVelocityKernelID = _simulationComputeShader.FindKernel("calculateDeltaVelocity");
         
@@ -379,6 +381,9 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
         _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _velocitiesBufferID, _velocitiesBuffer);
         _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _densitiesBufferID, _densitiesBuffer);
+        
+        _simulationComputeShader.SetBuffer(_spatialHashingKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        _simulationComputeShader.SetBuffer(_spatialHashingKernelID, _spatialKeysBufferID, _spatialGrid.SpatialKeysBuffer);
         
         _simulationComputeShader.SetBuffer(_densityKernelID, _positionsBufferID, _positionsBuffer);
         _simulationComputeShader.SetBuffer(_densityKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);

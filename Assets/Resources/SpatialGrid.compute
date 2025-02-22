@@ -1,13 +1,17 @@
 // KERNELS
-#pragma kernel reset_histogram_and_indices
+#pragma kernel reset_histogram
 #pragma kernel calculate_histogram
 
 // CONSTANTS
+
+// Amount of threads per group
 static const int thread_group_size = 256;
+// Amount of items managed by each eps algorithm's group.
+static const uint eps_items_per_group = thread_group_size * 2;
 
 // VARIABLES
 
-// Core buffers, used by the simulation
+// Core buffers, used by the simulation to execute neighbours each.
 RWStructuredBuffer<uint> spatial_keys;
 RWStructuredBuffer<uint> spatial_indices;
 RWStructuredBuffer<uint> spatial_offsets;
@@ -25,14 +29,20 @@ RWStructuredBuffer<uint> sorted_indices;
 // per key and to scatter the original data into a sorted buffer.
 RWStructuredBuffer<uint> keys_histogram;
 
-// Auxiliary buffer, used by the exclusive prefix sum algorithm
+// Auxiliary buffers, used by the eps (exclusive prefix sum) algorithm. 
+RWStructuredBuffer<uint> target;
 RWStructuredBuffer<uint> group_sums;
+// Size of the current target buffer on which the eps algorithm is running. Changed dynamically by CPU.
+uint target_size;
+// Shared memory used by each group executing the eps algorithm. Improves efficiency and reduce latency due to absence
+// of main memory access.
+groupshared uint eps_temp[eps_items_per_group];
 
 // Variables provided by the CPU
 int particles_amount;
 
 [numthreads(thread_group_size, 1, 1)]
-void reset_histogram_and_indices(uint id : SV_DispatchThreadID)
+void reset_histogram(uint id : SV_DispatchThreadID)
 {
     // Resetting only valid thread ids
     if(id >= particles_amount)
