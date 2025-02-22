@@ -30,14 +30,18 @@ public class SpatialGrid
     private int _calculateHistogramKernelID;
     private int _espScanKernelID;
     private int _espCombineKernelID;
+    private int _scatterOutputKernelID;
+    private int _copySortedIntoSpatialKernelID;
+    private int _resetOffsetsKernelID;
+    private int _calculateOffsetsKernelID;
     
     // GPU variables IDs
     private readonly int _spatialKeysBufferID = Shader.PropertyToID("spatial_keys");
     private readonly int _spatialIndicesBufferID = Shader.PropertyToID("spatial_indices");
     private int _spatialOffsetsBufferID = Shader.PropertyToID("spatial_offsets");
 
-    private int _sortedKeysBufferID = Shader.PropertyToID("sorted_keys");
-    private int _sortedIndicesBufferID = Shader.PropertyToID("sorted_indices");
+    private readonly int _sortedKeysBufferID = Shader.PropertyToID("sorted_keys");
+    private readonly int _sortedIndicesBufferID = Shader.PropertyToID("sorted_indices");
     private readonly int _keysHistogramBufferID = Shader.PropertyToID("keys_histogram");
 
     private readonly int _espTargetBufferID = Shader.PropertyToID("esp_target");
@@ -78,6 +82,22 @@ public class SpatialGrid
         
         // Applying ESP to keys histogram buffer
         ExclusivePrefixSum(_keysHistogramBuffer);
+        
+        // Scattering the current spatial data to obtain sorted buffers
+        _spatialGridComputeShader.Dispatch(_scatterOutputKernelID,
+            Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
+        
+        // Copying the sorted buffers into the spatial buffers
+        _spatialGridComputeShader.Dispatch(_copySortedIntoSpatialKernelID,
+            Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
+        
+        // Resetting the spatial offsets buffer
+        _spatialGridComputeShader.Dispatch(_resetOffsetsKernelID,
+            Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
+        
+        // Calculating the spatial offsets 
+        _spatialGridComputeShader.Dispatch(_calculateOffsetsKernelID,
+            Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
     }
     
     /// <summary>
@@ -179,6 +199,10 @@ public class SpatialGrid
         _calculateHistogramKernelID = _spatialGridComputeShader.FindKernel("calculate_histogram");
         _espScanKernelID = _spatialGridComputeShader.FindKernel("esp_scan");
         _espCombineKernelID = _spatialGridComputeShader.FindKernel("esp_combine");
+        _scatterOutputKernelID = _spatialGridComputeShader.FindKernel("scatter_output");
+        _copySortedIntoSpatialKernelID = _spatialGridComputeShader.FindKernel("copy_sorted_into_spatial");
+        _resetOffsetsKernelID = _spatialGridComputeShader.FindKernel("reset_offsets");
+        _calculateOffsetsKernelID = _spatialGridComputeShader.FindKernel("calculate_offsets");
         
         // Setting the buffers for the resetHistogram kernel
         _spatialGridComputeShader.SetBuffer(_resetHistogramKernelID, _keysHistogramBufferID, _keysHistogramBuffer);
@@ -187,5 +211,26 @@ public class SpatialGrid
         // Setting the buffers for the calculateHistogram kernel
         _spatialGridComputeShader.SetBuffer(_calculateHistogramKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
         _spatialGridComputeShader.SetBuffer(_calculateHistogramKernelID, _keysHistogramBufferID, _keysHistogramBuffer);
+        
+        // Setting the buffers for the scatterOutput kernel
+        _spatialGridComputeShader.SetBuffer(_scatterOutputKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
+        _spatialGridComputeShader.SetBuffer(_scatterOutputKernelID, _spatialIndicesBufferID, SpatialIndicesBuffer);
+        _spatialGridComputeShader.SetBuffer(_scatterOutputKernelID, _keysHistogramBufferID, _keysHistogramBuffer);
+        _spatialGridComputeShader.SetBuffer(_scatterOutputKernelID, _sortedKeysBufferID, _sortedKeysBuffer);
+        _spatialGridComputeShader.SetBuffer(_scatterOutputKernelID, _sortedIndicesBufferID, _sortedIndicesBuffer);
+        
+        // Setting the buffers for the copySortedIntoSpatial kernel
+        _spatialGridComputeShader.SetBuffer(_copySortedIntoSpatialKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
+        _spatialGridComputeShader.SetBuffer(_copySortedIntoSpatialKernelID, _spatialIndicesBufferID, SpatialIndicesBuffer);
+        _spatialGridComputeShader.SetBuffer(_copySortedIntoSpatialKernelID, _sortedKeysBufferID, _sortedKeysBuffer);
+        _spatialGridComputeShader.SetBuffer(_copySortedIntoSpatialKernelID, _sortedIndicesBufferID, _sortedIndicesBuffer);
+        
+        // Setting the buffers for the resetOffsets kernel
+        _spatialGridComputeShader.SetBuffer(_resetOffsetsKernelID, _spatialOffsetsBufferID, SpatialOffsetsBuffer);
+        
+        // Setting the buffers for the calculateOffsets kernel
+        _spatialGridComputeShader.SetBuffer(_calculateOffsetsKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
+        _spatialGridComputeShader.SetBuffer(_calculateOffsetsKernelID, _spatialOffsetsBufferID, SpatialOffsetsBuffer);
+
     }
 }

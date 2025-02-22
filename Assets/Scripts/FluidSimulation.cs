@@ -196,7 +196,7 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.Dispatch(_spatialHashingKernelID, 
             Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
         _spatialGrid.UpdateSpatialLookup();
-        _spatialGrid._keysHistogramBuffer.GetData(testArray);
+        _spatialGrid.SpatialKeysBuffer.GetData(testArray);
     }
 
     /// <summary>

@@ -3,6 +3,10 @@
 #pragma kernel calculate_histogram
 #pragma kernel esp_scan
 #pragma kernel esp_combine
+#pragma kernel scatter_output
+#pragma kernel copy_sorted_into_spatial
+#pragma kernel reset_offsets
+#pragma kernel calculate_offsets
 
 // CONSTANTS
 
@@ -164,4 +168,69 @@ void esp_combine(uint global_thread_id : SV_DispatchThreadID, uint group_id : SV
     // Propagating the prefix sum of previous groups if the global indices are valid
     if(first_global_index  < esp_target_size) esp_target[first_global_index]  += esp_groups_sums[group_id];
     if(second_global_index < esp_target_size) esp_target[second_global_index] += esp_groups_sums[group_id];
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void scatter_output(uint id : SV_DispatchThreadID)
+{
+    // Scattering using only valid ids
+    if(id >= particles_amount)
+        return;
+
+    // Extracting the spatial key corresponding to the thread
+    uint cell_key = spatial_keys[id];
+
+    // Obtaining a valid index into the sorted output
+    uint sorted_index;
+    InterlockedAdd(keys_histogram[cell_key], 1, sorted_index);
+
+    // Storing in the sorted output the input values corresponding to the thread id
+    sorted_keys[sorted_index] = cell_key;
+    sorted_indices[sorted_index] = spatial_indices[id];
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void copy_sorted_into_spatial(uint id : SV_DispatchThreadID)
+{
+    // Copying using only valid ids
+    if(id >= particles_amount)
+        return;
+
+    spatial_keys[id] = sorted_keys[id];
+    spatial_indices[id] = sorted_indices[id];
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void reset_offsets(uint id : SV_DispatchThreadID)
+{
+    // Copying using only valid ids
+    if(id >= particles_amount)
+        return;
+
+    // Special case: id == 0 always map to 0
+    if(id == 0)
+    {
+        spatial_offsets[id] = 0;
+        return;
+    }
+
+    // Assigning the maximum value so that if during simulation a false key is accessed, then automatically exit the
+    // loop
+    spatial_offsets[id] = particles_amount;
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void calculate_offsets(uint id : SV_DispatchThreadID)
+{
+    // Calculating using only valid ids
+    if(id >= particles_amount || id == 0)
+        return;
+
+    // Extracting the keys of this thread and the previous global one
+    uint key = spatial_keys[id];
+    uint previous_key = spatial_keys[id - 1];
+    
+    // If the current thread is different from the previous one, then the current thread is an offset
+    if(key != previous_key)
+        spatial_offsets[key] = id;
 }

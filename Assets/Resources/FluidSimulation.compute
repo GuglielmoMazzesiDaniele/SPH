@@ -115,16 +115,26 @@ uint3 positionToCellCoordinates(float3 position)
     return  (uint3) (position / kernel_radius);
 }
 
+// MurmurHash3-Like 3D Hash
+uint murmurMix(uint h)
+{
+    h ^= h >> 16;
+    h *= 0x85ebca6b;
+    h ^= h >> 13;
+    h *= 0xc2b2ae35;
+    h ^= h >> 16;
+    return h;
+}
+
 // Given a cell position in the spatial grid, returns its corresponding hash value mod particles_amount
 uint hashCell(uint3 cell_coords)
 {
-    // Multiplying the coordinates by three arbitrary prime number
-    uint a = cell_coords.x * 73856093;
-    uint b = cell_coords.y * 19349663;
-    uint c = cell_coords.z * 83492791;
-        
-    // Returning the hashed value
-    return (a ^ b ^ c) % particles_amount;
+    uint seed = 42; // You can change the seed
+    uint hash = seed;
+    hash ^= murmurMix(cell_coords.x);
+    hash ^= murmurMix(cell_coords.y);
+    hash ^= murmurMix(cell_coords.z);
+    return hash % particles_amount;
 }
 
 [numthreads(thread_group_size, 1, 1)]
