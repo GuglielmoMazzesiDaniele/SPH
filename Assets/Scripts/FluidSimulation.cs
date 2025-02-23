@@ -137,9 +137,14 @@ public class FluidSimulation : MonoBehaviour
     private readonly int _predictedPositionsBufferID = Shader.PropertyToID("predicted_positions");
     private readonly int _velocitiesBufferID = Shader.PropertyToID("velocities");
     private readonly int _densitiesBufferID = Shader.PropertyToID("densities");
+    
     private readonly int _spatialKeysBufferID = Shader.PropertyToID("spatial_keys");
     private readonly int _spatialIndicesBufferID = Shader.PropertyToID("spatial_indices");
     private readonly int _spatialOffsetsBufferID = Shader.PropertyToID("spatial_offsets");
+
+    private readonly int _auxiliaryPositionsBufferID = Shader.PropertyToID("auxiliary_positions");
+    private readonly int _auxiliaryPredictedPositionsBufferID = Shader.PropertyToID("auxiliary_predicted_positions");
+    private readonly int _auxiliaryVelocitiesBufferID = Shader.PropertyToID("auxiliary_velocities");
     
     #endregion
 
@@ -161,8 +166,12 @@ public class FluidSimulation : MonoBehaviour
 
     #endregion
 
-    [SerializeField] public int[] dummyIntArray;
-    [SerializeField] public Vector3[] dummyVector3Array;
+    [SerializeField] public uint[] preSortKeys;
+    [SerializeField] public uint[] postSortKeys;
+    [SerializeField] public uint[] offsets;
+    [SerializeField] public uint[] indices;
+    [SerializeField] public float[] densities;
+    [SerializeField] public Vector3[] positions;
     
     #region Initialization
 
@@ -192,25 +201,46 @@ public class FluidSimulation : MonoBehaviour
         // Initializing the variables related to the rendering pipeline
         InitializeParticleShader();
 
-        dummyIntArray = new int[particlesAmount];
-        dummyVector3Array = new Vector3[particlesAmount];
-        
-        // Dispatching the predicted position kernel
+        // Call to the debug function, used for debugging (duh
+        preSortKeys = new uint[particlesAmount];
+        postSortKeys = new uint[particlesAmount];
+        offsets = new uint[particlesAmount];
+        indices = new uint[particlesAmount];
+        densities = new float[particlesAmount];
+        positions = new Vector3[particlesAmount];
+        // InternalDebug();
+    }
+
+    /// <summary>
+    /// Wrapper function used to keep debugging stuff isolated
+    /// </summary>
+    private void InternalDebug()
+    {
+        // // Dispatching the predicted position kernel
         _simulationComputeShader.Dispatch(_predictedPositionKernelID, Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
         
-        // Creating a fence to wait for the predicted position kernel
-        var positionsFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
-            SynchronisationStageFlags.ComputeProcessing);
-            
-        // Waiting for the fence and then dispatch the next kernel
-        Graphics.WaitOnAsyncGraphicsFence(positionsFence);
-        
-        // Dispatching the density kernel
-        // _simulationComputeShader.Dispatch(_densityKernelID, particlesAmount / 256 + 1, 1, 1);
+        // Dispatching the spatial hashing kernel
+        _simulationComputeShader.Dispatch(_spatialHashingKernelID, Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
         
         // Debugging arrays
-        _densitiesBuffer.GetData(dummyIntArray);
-        _predictedPositionsBuffer.GetData(dummyVector3Array);
+        _spatialGrid.SpatialKeysBuffer.GetData(preSortKeys);
+        
+        // Updating the spatial data
+        _spatialGrid.UpdateSpatialLookup();
+        
+        // Debugging arrays
+        _spatialGrid.SpatialKeysBuffer.GetData(postSortKeys);
+        _spatialGrid.SpatialOffsetsBuffer.GetData(offsets);
+        _spatialGrid.SpatialIndicesBuffer.GetData(indices);
+        
+        // Dispatching the density kernel
+        _simulationComputeShader.Dispatch(_densityKernelID, particlesAmount / 256 + 1, 1, 1);
+        
+        // Dispatching the delta velocities kernel
+        _simulationComputeShader.Dispatch(_deltaVelocityKernelID, Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
+        
+        _densitiesBuffer.GetData(densities);
+        _positionsBuffer.GetData(positions);
     }
 
     /// <summary>
@@ -289,6 +319,8 @@ public class FluidSimulation : MonoBehaviour
         }
         
         // GPU
+        
+        // Initializing the GPU implementation of the spatial grid
         _spatialGrid = new SpatialGrid(particlesAmount);
     }
 
@@ -364,6 +396,10 @@ public class FluidSimulation : MonoBehaviour
         _predictedPositionsBuffer.SetData(_predictedPositions);
         _velocitiesBuffer.SetData(_velocities);
         _densitiesBuffer.SetData(_densities);
+        
+        // Setting the particles amount
+        _simulationComputeShader.SetInt("particles_amount", particlesAmount);
+        _simulationComputeShader.SetFloat("particle_mass", particleMass);
         
         // Caching the reference ID of the ComputeShader's kernels
         _predictedPositionKernelID = _simulationComputeShader.FindKernel("calculate_predicted_position");
@@ -472,8 +508,6 @@ public class FluidSimulation : MonoBehaviour
         
         // Setting all the constants, in case they were changed via GUI
         UpdateComputeShaderVariables();
-
-        return;
         
         // Running multiple simulation steps 
         for (var i = 0; i < simulationSubSteps; i++)
@@ -489,22 +523,27 @@ public class FluidSimulation : MonoBehaviour
             // Waiting for the fence and then dispatch the next kernel
             Graphics.WaitOnAsyncGraphicsFence(positionsFence);
             
+            // Dispatching the predicted position kernel
+            _simulationComputeShader.Dispatch(_spatialHashingKernelID, Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
+            
+            // Updating the spatial data
+            _spatialGrid.UpdateSpatialLookup();
+            
             // Dispatching the density kernel
             _simulationComputeShader.Dispatch(_densityKernelID, Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
             
             // Creating a fence to wait for the density kernel
             var densityFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
                 SynchronisationStageFlags.ComputeProcessing);
-
+            
             // Waiting for the fence and then dispatch the next kernel
             Graphics.WaitOnAsyncGraphicsFence(densityFence);
             
             // Dispatching the delta velocities kernel
             _simulationComputeShader.Dispatch(_deltaVelocityKernelID, Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
             
-            // Debugging arrays
-            _densitiesBuffer.GetData(dummyIntArray);
-            _predictedPositionsBuffer.GetData(dummyVector3Array);
+            // _densitiesBuffer.GetData(densities);
+            // _positionsBuffer.GetData(positions);
         }
 
         return;

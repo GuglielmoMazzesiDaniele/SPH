@@ -227,6 +227,7 @@ public class SpatialGrid
         
         // Setting the buffers for the resetOffsets kernel
         _spatialGridComputeShader.SetBuffer(_resetOffsetsKernelID, _spatialOffsetsBufferID, SpatialOffsetsBuffer);
+        _spatialGridComputeShader.SetBuffer(_resetOffsetsKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
         
         // Setting the buffers for the calculateOffsets kernel
         _spatialGridComputeShader.SetBuffer(_calculateOffsetsKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
