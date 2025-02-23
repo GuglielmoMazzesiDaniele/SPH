@@ -1,8 +1,8 @@
 // Each #kernel tells which function to compile; you can have many kernels
-#pragma kernel calculatePredictedPosition
-#pragma kernel calculateSpatialHash
-#pragma kernel calculateDensity
-#pragma kernel calculateDeltaVelocity
+#pragma kernel calculate_predicted_position
+#pragma kernel calculate_spatial_hash
+#pragma kernel calculate_density
+#pragma kernel calculate_delta_velocity
 
 // CONSTANTS
 static const int thread_group_size = 256;
@@ -17,6 +17,40 @@ RWStructuredBuffer<float> densities;
 
 // Spatial Hashing Grid's buffers
 RWStructuredBuffer<uint> spatial_keys;
+RWStructuredBuffer<uint> spatial_indices;
+RWStructuredBuffer<uint> spatial_offsets;
+
+// Spatial Hashing 3D offsets
+static const int3 cell_offsets3D[27] =
+{
+    int3 (-1,  1,  1),
+    int3 ( 0,  1,  1),
+    int3 ( 1,  1,  1),
+    int3 (-1,  0,  1),
+    int3 ( 0,  0,  1),
+    int3 ( 1,  0,  1),
+    int3 (-1, -1,  1),
+    int3 ( 0, -1,  1),
+    int3 ( 1, -1,  1),
+    int3 (-1,  1,  0),
+    int3 ( 0,  1,  0),
+    int3 ( 1,  1,  0),
+    int3 (-1,  0,  0),
+    int3 ( 0,  0,  0),
+    int3 ( 1,  0,  0),
+    int3 (-1, -1,  0),
+    int3 ( 0, -1,  0),
+    int3 ( 1, -1,  0),
+    int3 (-1,  1, -1),
+    int3 ( 0,  1, -1),
+    int3 ( 1,  1, -1),
+    int3 (-1,  0, -1),
+    int3 ( 0,  0, -1),
+    int3 ( 1,  0, -1),
+    int3 (-1, -1, -1),
+    int3 ( 0, -1, -1),
+    int3 ( 1, -1, -1),
+};
 
 // CPU PROVIDED DATA
 
@@ -138,7 +172,7 @@ uint hashCell(uint3 cell_coords)
 }
 
 [numthreads(thread_group_size, 1, 1)]
-void calculateSpatialHash(uint id : SV_DispatchThreadID)
+void calculate_spatial_hash(uint id : SV_DispatchThreadID)
 {
     // Apply the process only using valid ids
     if(id >= particles_amount)
@@ -149,15 +183,19 @@ void calculateSpatialHash(uint id : SV_DispatchThreadID)
 }
 
 [numthreads(thread_group_size, 1, 1)]
-void calculatePredictedPosition(uint id : SV_DispatchThreadID)
+void calculate_predicted_position(uint target_particle_index : SV_DispatchThreadID)
 {
     // Computing the predicted position
-    predicted_positions[id] = positions[id] + velocities[id] * delta_time + float3(0, -1, 0) * gravity;
+    predicted_positions[target_particle_index] = positions[target_particle_index]
+        + velocities[target_particle_index] * delta_time + float3(0, -1, 0) * gravity * delta_time * delta_time;
 }
 
 [numthreads(thread_group_size, 1, 1)]
-void calculateDensity(uint target_particle_index : SV_DispatchThreadID)
+void calculate_density(uint target_particle_index : SV_DispatchThreadID)
 {
+    densities[target_particle_index] = target_particle_index;
+    return;
+    
     // Initializing the density of the target particle
     float density = 0.0f;
 
@@ -180,10 +218,48 @@ void calculateDensity(uint target_particle_index : SV_DispatchThreadID)
 
     // Updating target particle density
     densities[target_particle_index] = density;
+
+    return;
+
+    // Computing the coordinates of the grid cell containing the target particle
+    uint3 target_cell_coords = positionToCellCoordinates(predicted_positions[target_particle_index]);
+    
+    // Neighbours search
+    for(int i = 0; i < 27; i++)
+    {
+        // Computing the key of the central cell + the current offset
+        uint current_cell_key = hashCell(target_cell_coords + cell_offsets3D[i]);
+    
+        // Extracting the index of the first element with current cell key
+        uint start_index = spatial_offsets[current_cell_key];
+    
+        // Iterating all neighbours within the current cell
+        for(int j = start_index; j < particles_amount && spatial_keys[j] == current_cell_key; j++)
+        {
+            // Extracting the index to the current particle
+            uint current_particle_index = spatial_indices[j];
+    
+            // Computing the vector between the current particle and the target
+            float3 diff_vector = predicted_positions[current_particle_index] - predicted_positions[target_particle_index];
+    
+            // Computing the squared distance
+            float sqr_distance = dot(diff_vector, diff_vector);
+    
+            // If the particle is outside kernel radius, continue
+            if(sqr_distance >= sqr_kernel_radius)
+                continue;
+    
+            // Adding the current particle influence to the target particle density
+            density += particle_mass * poly6(sqr_distance);
+        }
+    }
+    
+    // Updating target particle density
+    densities[target_particle_index] = density;
 }
 
 [numthreads(thread_group_size, 1, 1)]
-void calculateDeltaVelocity(uint target_particle_index : SV_DispatchThreadID)
+void calculate_delta_velocity(uint target_particle_index : SV_DispatchThreadID)
 {
     // Initializing the new acceleration of the target particle
     float3 force = 0.0f;

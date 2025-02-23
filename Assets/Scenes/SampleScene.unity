@@ -288,11 +288,11 @@ MonoBehaviour:
   particleRadius: 0.04
   particleMass: 1
   collisionDamping: 0.5
-  particlesAmount: 1500
+  particlesAmount: 256
   particlesSpacing: 0
   initializationAlgorithm: 1
   kernelRadius: 0.1
-  bounds: {x: 8, y: 2, z: 2}
+  bounds: {x: 4, y: 2, z: 2}
   gravity: 10
   restDensity: 30
   stiffness: 30
@@ -332,7 +332,8 @@ MonoBehaviour:
     m_NumAlphaKeys: 2
   speedGradientTextureWidth: 256
   renderSimulation: 1
-  testArray: 
+  dummyIntArray: 
+  dummyVector3Array: []
 --- !u!4 &1558477423
 Transform:
   m_ObjectHideFlags: 0
