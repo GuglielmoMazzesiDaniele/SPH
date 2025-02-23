@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public class SpatialGrid
 {
@@ -76,9 +77,23 @@ public class SpatialGrid
         _spatialGridComputeShader.Dispatch(_resetHistogramKernelID, 
             Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
         
+        // Creating a fence to wait for the previous kernel
+        var resetHistogramFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
+            SynchronisationStageFlags.ComputeProcessing);
+            
+        // Waiting for the fence and then dispatch the next kernel
+        Graphics.WaitOnAsyncGraphicsFence(resetHistogramFence);
+        
         // Computing the histogram of the keys value
         _spatialGridComputeShader.Dispatch(_calculateHistogramKernelID,
             Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
+        
+        // Creating a fence to wait for the previous kernel
+        var calculateHistogramFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
+            SynchronisationStageFlags.ComputeProcessing);
+            
+        // Waiting for the fence and then dispatch the next kernel
+        Graphics.WaitOnAsyncGraphicsFence(calculateHistogramFence);
         
         // Applying ESP to keys histogram buffer
         ExclusivePrefixSum(_keysHistogramBuffer);
@@ -87,17 +102,45 @@ public class SpatialGrid
         _spatialGridComputeShader.Dispatch(_scatterOutputKernelID,
             Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
         
+        // Creating a fence to wait for the previous kernel
+        var scatterOutputFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
+            SynchronisationStageFlags.ComputeProcessing);
+            
+        // Waiting for the fence and then dispatch the next kernel
+        Graphics.WaitOnAsyncGraphicsFence(scatterOutputFence);
+        
         // Copying the sorted buffers into the spatial buffers
         _spatialGridComputeShader.Dispatch(_copySortedIntoSpatialKernelID,
             Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
+        
+        // Creating a fence to wait for the previous kernel
+        var copySortedIntoSpatialFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
+            SynchronisationStageFlags.ComputeProcessing);
+            
+        // Waiting for the fence and then dispatch the next kernel
+        Graphics.WaitOnAsyncGraphicsFence(copySortedIntoSpatialFence);
         
         // Resetting the spatial offsets buffer
         _spatialGridComputeShader.Dispatch(_resetOffsetsKernelID,
             Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
         
+        // Creating a fence to wait for the previous kernel
+        var resetOffsetFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
+            SynchronisationStageFlags.ComputeProcessing);
+            
+        // Waiting for the fence and then dispatch the next kernel
+        Graphics.WaitOnAsyncGraphicsFence(resetOffsetFence);
+        
         // Calculating the spatial offsets 
         _spatialGridComputeShader.Dispatch(_calculateOffsetsKernelID,
             Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
+            
+        // Creating a fence to wait for the previous kernel
+        var calculateOffsetFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
+            SynchronisationStageFlags.ComputeProcessing);
+            
+        // Waiting for the fence and then dispatch the next kernel
+        Graphics.WaitOnAsyncGraphicsFence(calculateOffsetFence);
     }
     
     /// <summary>
@@ -151,6 +194,13 @@ public class SpatialGrid
         // Dispatching the esp scan kernel
         _spatialGridComputeShader.Dispatch(_espScanKernelID, requiredGroupsAmount, 1, 1);
         
+        // Creating a fence to wait for the previous kernel
+        var espScanFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
+            SynchronisationStageFlags.ComputeProcessing);
+            
+        // Waiting for the fence and then dispatch the next kernel
+        Graphics.WaitOnAsyncGraphicsFence(espScanFence);
+        
         // If more than one group was required to execute the esp algorithm, the total sum of each group must be
         // increased by the total sum of all previous groups. To do so, esp is applied to the group sum buffer as well.
         if (requiredGroupsAmount > 1)
@@ -167,6 +217,13 @@ public class SpatialGrid
             
             // Dispatching the esp combine kernel
             _spatialGridComputeShader.Dispatch(_espCombineKernelID, requiredGroupsAmount, 1, 1);
+            
+            // Creating a fence to wait for the previous kernel
+            var espCombineFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
+                SynchronisationStageFlags.ComputeProcessing);
+            
+            // Waiting for the fence and then dispatch the next kernel
+            Graphics.WaitOnAsyncGraphicsFence(espCombineFence);
         }
     }
 
