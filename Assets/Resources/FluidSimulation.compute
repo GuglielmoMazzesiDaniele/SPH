@@ -21,7 +21,7 @@ RWStructuredBuffer<uint> spatial_indices;
 RWStructuredBuffer<uint> spatial_offsets;
 
 // Spatial Hashing 3D offsets
-static const int3 cell_offsets3D[27] =
+static const int3 cell_offsets_3D[27] =
 {
     int3 (-1,  1,  1),
     int3 ( 0,  1,  1),
@@ -185,6 +185,11 @@ void calculate_spatial_hash(uint id : SV_DispatchThreadID)
 [numthreads(thread_group_size, 1, 1)]
 void calculate_predicted_position(uint target_particle_index : SV_DispatchThreadID)
 {
+    // Debug
+    densities[target_particle_index] = target_particle_index;
+    predicted_positions[target_particle_index] = float3(target_particle_index, target_particle_index, target_particle_index);
+    return;
+    
     // Computing the predicted position
     predicted_positions[target_particle_index] = positions[target_particle_index]
         + velocities[target_particle_index] * delta_time + float3(0, -1, 0) * gravity * delta_time * delta_time;
@@ -193,9 +198,6 @@ void calculate_predicted_position(uint target_particle_index : SV_DispatchThread
 [numthreads(thread_group_size, 1, 1)]
 void calculate_density(uint target_particle_index : SV_DispatchThreadID)
 {
-    densities[target_particle_index] = target_particle_index;
-    return;
-    
     // Initializing the density of the target particle
     float density = 0.0f;
 
@@ -215,7 +217,7 @@ void calculate_density(uint target_particle_index : SV_DispatchThreadID)
         // Adding the current particle influence to the target particle density
         density += particle_mass * poly6(sqr_distance);
     }
-
+    
     // Updating target particle density
     densities[target_particle_index] = density;
 
@@ -228,7 +230,7 @@ void calculate_density(uint target_particle_index : SV_DispatchThreadID)
     for(int i = 0; i < 27; i++)
     {
         // Computing the key of the central cell + the current offset
-        uint current_cell_key = hashCell(target_cell_coords + cell_offsets3D[i]);
+        uint current_cell_key = hashCell(target_cell_coords + cell_offsets_3D[i]);
     
         // Extracting the index of the first element with current cell key
         uint start_index = spatial_offsets[current_cell_key];

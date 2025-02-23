@@ -129,7 +129,6 @@ public class FluidSimulation : MonoBehaviour
     private readonly int _spikyGradientFirstTermID = Shader.PropertyToID("spiky_gradient_first_term");
     private readonly int _viscosityLaplacianFirstTermID = Shader.PropertyToID("viscosity_laplacian_first_term");
     
-
     private readonly int _stiffnessID = Shader.PropertyToID("stiffness");
     private readonly int _restDensityID = Shader.PropertyToID("rest_density");
     private readonly int _viscosityID = Shader.PropertyToID("viscosity");
@@ -207,7 +206,7 @@ public class FluidSimulation : MonoBehaviour
         Graphics.WaitOnAsyncGraphicsFence(positionsFence);
         
         // Dispatching the density kernel
-        _simulationComputeShader.Dispatch(_densityKernelID, Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
+        // _simulationComputeShader.Dispatch(_densityKernelID, particlesAmount / 256 + 1, 1, 1);
         
         // Debugging arrays
         _densitiesBuffer.GetData(dummyIntArray);
