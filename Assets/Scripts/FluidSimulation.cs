@@ -165,12 +165,12 @@ public class FluidSimulation : MonoBehaviour
 
     #endregion
 
-    [SerializeField] private uint[] preSortKeys;
-    [SerializeField] private uint[] postSortKeys;
-    [SerializeField] private uint[] offsets;
-    [SerializeField] private uint[] indices;
-    [SerializeField] private float[] densities;
-    [SerializeField] private Vector3[] positions;
+    private uint[] preSortKeys;
+    private uint[] postSortKeys;
+    private uint[] offsets;
+    private uint[] indices;
+    private float[] densities;
+    private Vector3[] positions;
     
     #region Initialization
 
@@ -203,13 +203,12 @@ public class FluidSimulation : MonoBehaviour
         // Call to the debug function, used for debugging (duh
         
         // Initializing the debugging arrays
-        preSortKeys = new uint[particlesAmount];
-        postSortKeys = new uint[particlesAmount];
-        offsets = new uint[particlesAmount];
-        indices = new uint[particlesAmount];
-        densities = new float[particlesAmount];
-        positions = new Vector3[particlesAmount];
-        
+        // preSortKeys = new uint[particlesAmount];
+        // postSortKeys = new uint[particlesAmount];
+        // offsets = new uint[particlesAmount];
+        // indices = new uint[particlesAmount];
+        // densities = new float[particlesAmount];
+        // positions = new Vector3[particlesAmount;
         // InternalDebug();
     }
 
@@ -435,12 +434,6 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void UpdateComputeShaderVariables()
     {
-        // Computing a smaller delta time per substep
-        var subDeltaTime = Time.fixedDeltaTime / simulationSubSteps;
-        
-        // Setting the delta time in the GPU
-        _simulationComputeShader.SetFloat("delta_time", subDeltaTime);
-        
         // Setting ComputeShader's vectors
         _simulationComputeShader.SetVector(_halfBoundsID, _halfBounds);
         
@@ -493,7 +486,7 @@ public class FluidSimulation : MonoBehaviour
     /// <summary>
     /// Updates the underlying simulation.
     /// </summary>
-    private void FixedUpdate()
+    private void Update()
     {
         // Updating the variables related to the kernels
         UpdateKernelVariables();
@@ -503,6 +496,12 @@ public class FluidSimulation : MonoBehaviour
         
         // Setting all the constants, in case they were changed via GUI
         UpdateComputeShaderVariables();
+        
+        // Computing a smaller delta time per substep
+        var subDeltaTime = Mathf.Min(Time.deltaTime / simulationSubSteps, 1 / 60.0f);
+        
+        // Setting the delta time in the GPU
+        _simulationComputeShader.SetFloat("delta_time", subDeltaTime);
 
         // Running multiple simulation steps 
         for (var i = 0; i < simulationSubSteps; i++)
@@ -512,7 +511,7 @@ public class FluidSimulation : MonoBehaviour
                 Mathf.CeilToInt(particlesAmount / 256.0f), 1, 1);
             
             // Creating a fence to wait for the previous kernel
-            var positionsFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
+            var positionsFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation,
                 SynchronisationStageFlags.ComputeProcessing);
             
             // Waiting for the fence and then dispatch the next kernel
@@ -554,7 +553,7 @@ public class FluidSimulation : MonoBehaviour
     /// <summary>
     /// Renders the simulation.
     /// </summary>
-    private void Update()
+    private void LateUpdate()
     {
         // If the simulation is not to be rendered, return
         if (!renderSimulation)
