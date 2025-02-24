@@ -208,7 +208,7 @@ public class FluidSimulation : MonoBehaviour
         // offsets = new uint[particlesAmount];
         // indices = new uint[particlesAmount];
         // densities = new float[particlesAmount];
-        // positions = new Vector3[particlesAmount;
+        // positions = new Vector3[particlesAmount];
         // InternalDebug();
     }
 
@@ -502,7 +502,7 @@ public class FluidSimulation : MonoBehaviour
         
         // Setting the delta time in the GPU
         _simulationComputeShader.SetFloat("delta_time", subDeltaTime);
-
+        
         // Running multiple simulation steps 
         for (var i = 0; i < simulationSubSteps; i++)
         {
