@@ -288,16 +288,16 @@ MonoBehaviour:
   particleRadius: 0.04
   particleMass: 1
   collisionDamping: 0.5
-  particlesAmount: 17500
-  particlesSpacing: 0
+  particlesAmount: 1500
+  particlesGridSpacing: 0
   initializationAlgorithm: 1
   kernelRadius: 0.1
-  bounds: {x: 8, y: 2.5, z: 2.5}
+  bounds: {x: 5, y: 2, z: 2}
   gravity: 10
-  restDensity: 1000
-  stiffness: 100
+  restDensity: 30
+  stiffness: 30
   viscosity: 0.1
-  simulationSubSteps: 3
+  simulationSubSteps: 10
   spatialGridCellSize: 0.05
   particleMaterial: {fileID: 2100000, guid: 8712fed4b32e58e4cb0d0285d55755b8, type: 2}
   particleSpeedGradient:

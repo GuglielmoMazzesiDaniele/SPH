@@ -27,19 +27,18 @@ public class SpatialGrid
     private const float GPUGroupSize = 256.0f;
     
     // GPU Kernels IDs
-    private int _resetHistogramKernelID;
-    private int _calculateHistogramKernelID;
+    private int _initializeBuffersKernelID;
+    private int _calculateHistogramAndResetOffsetsKernelID;
     private int _espScanKernelID;
     private int _espCombineKernelID;
     private int _scatterOutputKernelID;
     private int _copySortedIntoSpatialKernelID;
-    private int _resetOffsetsKernelID;
-    private int _calculateOffsetsKernelID;
+    private int _calculateOffsetsAndResetHistogramKernelID;
     
     // GPU variables IDs
     private readonly int _spatialKeysBufferID = Shader.PropertyToID("spatial_keys");
     private readonly int _spatialIndicesBufferID = Shader.PropertyToID("spatial_indices");
-    private int _spatialOffsetsBufferID = Shader.PropertyToID("spatial_offsets");
+    private readonly int _spatialOffsetsBufferID = Shader.PropertyToID("spatial_offsets");
 
     private readonly int _sortedKeysBufferID = Shader.PropertyToID("sorted_keys");
     private readonly int _sortedIndicesBufferID = Shader.PropertyToID("sorted_indices");
@@ -73,27 +72,9 @@ public class SpatialGrid
     /// </summary>
     public void UpdateSpatialLookup()
     {
-        // Resetting the histogram and indices buffers
-        _spatialGridComputeShader.Dispatch(_resetHistogramKernelID, 
-            Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
-        
-        // Creating a fence to wait for the previous kernel
-        var resetHistogramFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
-            SynchronisationStageFlags.ComputeProcessing);
-            
-        // Waiting for the fence and then dispatch the next kernel
-        Graphics.WaitOnAsyncGraphicsFence(resetHistogramFence);
-        
         // Computing the histogram of the keys value
-        _spatialGridComputeShader.Dispatch(_calculateHistogramKernelID,
+        _spatialGridComputeShader.Dispatch(_calculateHistogramAndResetOffsetsKernelID,
             Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
-        
-        // Creating a fence to wait for the previous kernel
-        var calculateHistogramFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
-            SynchronisationStageFlags.ComputeProcessing);
-            
-        // Waiting for the fence and then dispatch the next kernel
-        Graphics.WaitOnAsyncGraphicsFence(calculateHistogramFence);
         
         // Applying ESP to keys histogram buffer
         ExclusivePrefixSum(_keysHistogramBuffer);
@@ -102,45 +83,13 @@ public class SpatialGrid
         _spatialGridComputeShader.Dispatch(_scatterOutputKernelID,
             Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
         
-        // Creating a fence to wait for the previous kernel
-        var scatterOutputFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
-            SynchronisationStageFlags.ComputeProcessing);
-            
-        // Waiting for the fence and then dispatch the next kernel
-        Graphics.WaitOnAsyncGraphicsFence(scatterOutputFence);
-        
         // Copying the sorted buffers into the spatial buffers
         _spatialGridComputeShader.Dispatch(_copySortedIntoSpatialKernelID,
             Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
         
-        // Creating a fence to wait for the previous kernel
-        var copySortedIntoSpatialFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
-            SynchronisationStageFlags.ComputeProcessing);
-            
-        // Waiting for the fence and then dispatch the next kernel
-        Graphics.WaitOnAsyncGraphicsFence(copySortedIntoSpatialFence);
-        
-        // Resetting the spatial offsets buffer
-        _spatialGridComputeShader.Dispatch(_resetOffsetsKernelID,
-            Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
-        
-        // Creating a fence to wait for the previous kernel
-        var resetOffsetFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
-            SynchronisationStageFlags.ComputeProcessing);
-            
-        // Waiting for the fence and then dispatch the next kernel
-        Graphics.WaitOnAsyncGraphicsFence(resetOffsetFence);
-        
         // Calculating the spatial offsets 
-        _spatialGridComputeShader.Dispatch(_calculateOffsetsKernelID,
+        _spatialGridComputeShader.Dispatch(_calculateOffsetsAndResetHistogramKernelID,
             Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
-            
-        // Creating a fence to wait for the previous kernel
-        var calculateOffsetFence = Graphics.CreateGraphicsFence(GraphicsFenceType.AsyncQueueSynchronisation, 
-            SynchronisationStageFlags.ComputeProcessing);
-            
-        // Waiting for the fence and then dispatch the next kernel
-        Graphics.WaitOnAsyncGraphicsFence(calculateOffsetFence);
     }
     
     /// <summary>
@@ -252,22 +201,23 @@ public class SpatialGrid
         _spatialGridComputeShader.SetInt("particles_amount", _particlesAmount);
         
         // Setting the compute shaders kernel IDs
-        _resetHistogramKernelID = _spatialGridComputeShader.FindKernel("reset_histogram");
-        _calculateHistogramKernelID = _spatialGridComputeShader.FindKernel("calculate_histogram");
+        _initializeBuffersKernelID = _spatialGridComputeShader.FindKernel("initialize_buffers");
+        _calculateHistogramAndResetOffsetsKernelID = _spatialGridComputeShader.FindKernel("calculate_histogram_and_reset_offsets");
         _espScanKernelID = _spatialGridComputeShader.FindKernel("esp_scan");
         _espCombineKernelID = _spatialGridComputeShader.FindKernel("esp_combine");
         _scatterOutputKernelID = _spatialGridComputeShader.FindKernel("scatter_output");
         _copySortedIntoSpatialKernelID = _spatialGridComputeShader.FindKernel("copy_sorted_into_spatial");
-        _resetOffsetsKernelID = _spatialGridComputeShader.FindKernel("reset_offsets");
-        _calculateOffsetsKernelID = _spatialGridComputeShader.FindKernel("calculate_offsets");
+        _calculateOffsetsAndResetHistogramKernelID = _spatialGridComputeShader.FindKernel("calculate_offsets_and_reset_histogram");
         
         // Setting the buffers for the resetHistogram kernel
-        _spatialGridComputeShader.SetBuffer(_resetHistogramKernelID, _keysHistogramBufferID, _keysHistogramBuffer);
-        _spatialGridComputeShader.SetBuffer(_resetHistogramKernelID, _spatialIndicesBufferID, SpatialIndicesBuffer);
+        _spatialGridComputeShader.SetBuffer(_initializeBuffersKernelID, _keysHistogramBufferID, _keysHistogramBuffer);
+        _spatialGridComputeShader.SetBuffer(_initializeBuffersKernelID, _spatialIndicesBufferID, SpatialIndicesBuffer);
+        _spatialGridComputeShader.SetBuffer(_initializeBuffersKernelID, _spatialOffsetsBufferID, SpatialOffsetsBuffer);
         
         // Setting the buffers for the calculateHistogram kernel
-        _spatialGridComputeShader.SetBuffer(_calculateHistogramKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
-        _spatialGridComputeShader.SetBuffer(_calculateHistogramKernelID, _keysHistogramBufferID, _keysHistogramBuffer);
+        _spatialGridComputeShader.SetBuffer(_calculateHistogramAndResetOffsetsKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
+        _spatialGridComputeShader.SetBuffer(_calculateHistogramAndResetOffsetsKernelID, _keysHistogramBufferID, _keysHistogramBuffer);
+        _spatialGridComputeShader.SetBuffer(_calculateHistogramAndResetOffsetsKernelID, _spatialOffsetsBufferID, SpatialOffsetsBuffer);
         
         // Setting the buffers for the scatterOutput kernel
         _spatialGridComputeShader.SetBuffer(_scatterOutputKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
@@ -282,13 +232,13 @@ public class SpatialGrid
         _spatialGridComputeShader.SetBuffer(_copySortedIntoSpatialKernelID, _sortedKeysBufferID, _sortedKeysBuffer);
         _spatialGridComputeShader.SetBuffer(_copySortedIntoSpatialKernelID, _sortedIndicesBufferID, _sortedIndicesBuffer);
         
-        // Setting the buffers for the resetOffsets kernel
-        _spatialGridComputeShader.SetBuffer(_resetOffsetsKernelID, _spatialOffsetsBufferID, SpatialOffsetsBuffer);
-        _spatialGridComputeShader.SetBuffer(_resetOffsetsKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
-        
         // Setting the buffers for the calculateOffsets kernel
-        _spatialGridComputeShader.SetBuffer(_calculateOffsetsKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
-        _spatialGridComputeShader.SetBuffer(_calculateOffsetsKernelID, _spatialOffsetsBufferID, SpatialOffsetsBuffer);
-
+        _spatialGridComputeShader.SetBuffer(_calculateOffsetsAndResetHistogramKernelID, _spatialKeysBufferID, SpatialKeysBuffer);
+        _spatialGridComputeShader.SetBuffer(_calculateOffsetsAndResetHistogramKernelID, _spatialOffsetsBufferID, SpatialOffsetsBuffer);
+        _spatialGridComputeShader.SetBuffer(_calculateOffsetsAndResetHistogramKernelID, _keysHistogramBufferID, _keysHistogramBuffer);
+        
+        // Dispatching kernels to initializes the buffers
+        _spatialGridComputeShader.Dispatch(_initializeBuffersKernelID,
+            Mathf.CeilToInt(_particlesAmount / GPUGroupSize), 1, 1);
     }
 }
