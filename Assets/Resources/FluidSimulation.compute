@@ -1,5 +1,7 @@
 // Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel calculate_predicted_and_keys
+#pragma kernel reorder_buffers
+#pragma kernel copy_auxiliary_in_main
 #pragma kernel calculate_density
 #pragma kernel calculate_delta_velocity
 
@@ -132,7 +134,7 @@ void resolve_collision(uint target_particle_index)
 // Converts given density into pressure
 float convert_density_to_pressure(float density)
 {
-    return (pow(density / rest_density, 4) - 1) * stiffness;
+    return (density - rest_density) * stiffness;
 }
 
 // Calculate the shared pressure between two densities
@@ -182,6 +184,35 @@ uint hash_cell(int3 cell_coords)
 }
 
 [numthreads(thread_group_size, 1, 1)]
+void reorder_buffers(uint target_particle_index : SV_DispatchThreadID)
+{
+    // Avoid using invalid indices
+    if(target_particle_index >= particles_amount)
+        return;
+
+    // Mapping sorted indices to unsorted indices
+    uint unsorted_index = spatial_indices[target_particle_index];
+
+    // Shifting the data from the main buffers to the auxiliary buffers to for a sorted buffer
+    auxiliary_positions[target_particle_index] = positions[unsorted_index];
+    auxiliary_predicted_positions[target_particle_index] = predicted_positions[unsorted_index];
+    auxiliary_velocities[target_particle_index] = velocities[unsorted_index];
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void copy_auxiliary_in_main(uint target_particle_index : SV_DispatchThreadID)
+{
+    // Avoid using invalid indices
+    if(target_particle_index >= particles_amount)
+        return;
+
+    // Moving the data from the auxiliary buffers to the main buffers
+    positions[target_particle_index] = auxiliary_positions[target_particle_index];
+    predicted_positions[target_particle_index] = auxiliary_predicted_positions[target_particle_index];
+    velocities[target_particle_index] = auxiliary_velocities[target_particle_index];
+}
+
+[numthreads(thread_group_size, 1, 1)]
 void calculate_predicted_and_keys(uint target_particle_index : SV_DispatchThreadID)
 {
     // Apply the process only using valid ids
@@ -227,10 +258,12 @@ void calculate_density(uint target_particle_index : SV_DispatchThreadID)
         uint current_cell_key = hash_cell(current_cell_coords);
         
         // Iterating all neighbours within the current cell
-        for(uint j = spatial_offsets[current_cell_key]; j < particles_amount && spatial_keys[j] == current_cell_key; j++)
+        for(uint current_particle_index = spatial_offsets[current_cell_key];
+            current_particle_index < particles_amount && spatial_keys[current_particle_index] == current_cell_key;
+            current_particle_index++)
         {
             // Extracting the index to the current particle
-            uint current_particle_index = spatial_indices[j];
+            // uint current_particle_index = spatial_indices[j];
             
             // Storing the predicted position of the current particle
             float3 current_particle_pred_pos = predicted_positions[current_particle_index];
@@ -306,10 +339,12 @@ void calculate_delta_velocity(uint target_particle_index : SV_DispatchThreadID)
         uint current_cell_key = hash_cell(current_cell_coords);
         
         // Iterating all neighbours within the current cell
-        for(uint j = spatial_offsets[current_cell_key]; j < particles_amount && spatial_keys[j] == current_cell_key; j++)
+        for(uint current_particle_index = spatial_offsets[current_cell_key];
+            current_particle_index < particles_amount && spatial_keys[current_particle_index] == current_cell_key;
+            current_particle_index++)
         {
             // Extracting the index to the current particle
-            uint current_particle_index = spatial_indices[j];
+            // uint current_particle_index = spatial_indices[j];
 
             // Skipping calculation for the particle by itself
             if(target_particle_index == current_particle_index)

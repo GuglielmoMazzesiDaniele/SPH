@@ -137,7 +137,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!81 &330585544
 AudioListener:
   m_ObjectHideFlags: 0
@@ -285,19 +285,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 16acc8ad9dc14dd41ab2e0c1c4bcc941, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  particleRadius: 0.05
+  particleRadius: 0.06
   particleMass: 1
   collisionDamping: 0.5
-  particlesAmount: 20000
+  particlesAmount: 100000
   particlesGridSpacing: 0
   initializationAlgorithm: 1
-  kernelRadius: 0.15
-  bounds: {x: 4, y: 3, z: 3}
+  kernelRadius: 0.2
+  bounds: {x: 10, y: 5, z: 3}
   gravity: 10
-  restDensity: 250
-  stiffness: 50
+  restDensity: 650
+  stiffness: 250
   viscosity: 0.1
-  simulationSubSteps: 10
+  simulationSubSteps: 3
   spatialGridCellSize: 0.05
   particleMaterial: {fileID: 2100000, guid: 8712fed4b32e58e4cb0d0285d55755b8, type: 2}
   particleSpeedGradient:
@@ -332,6 +332,13 @@ MonoBehaviour:
     m_NumAlphaKeys: 2
   speedGradientTextureWidth: 256
   renderSimulation: 1
+  preSortKeys: 
+  postSortKeys: 
+  offsets: 
+  indices: 
+  densities: []
+  predictedPositions: []
+  positions: []
 --- !u!4 &1558477423
 Transform:
   m_ObjectHideFlags: 0
