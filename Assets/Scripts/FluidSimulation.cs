@@ -1,10 +1,6 @@
-using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using UnityEngine;
-using UnityEngine.Rendering;
-using UnityEngine.Serialization;
 using Random = UnityEngine.Random;
 using Vector2 = UnityEngine.Vector2;
 using Vector3 = UnityEngine.Vector3;
@@ -59,6 +55,9 @@ public class FluidSimulation : MonoBehaviour
     
     // Reference to the simulation compute shader
     private ComputeShader _simulationComputeShader;
+    
+    // Reference to the particles spawner
+    private FluidSpawner _fluidSpawner;
     
     // Particles related fields
     private Vector3[] _positions;
@@ -118,6 +117,8 @@ public class FluidSimulation : MonoBehaviour
     // Shaders related fields
     private readonly int _halfBoundsID = Shader.PropertyToID("half_bounds");
     private readonly int _collisionDampingID = Shader.PropertyToID("collision_damping");
+
+    private readonly int _deltaTimeID = Shader.PropertyToID("delta_time");
     
     private readonly int _gravityID = Shader.PropertyToID("gravity");
     
@@ -189,6 +190,12 @@ public class FluidSimulation : MonoBehaviour
         // Linking the simulation compute shader
         _simulationComputeShader = Resources.Load<ComputeShader>("FluidSimulation");
         
+        // Linking the fluid spawner
+        _fluidSpawner = GetComponent<FluidSpawner>();
+        
+        // Initializing the particles
+        InitializeParticles();
+        
         // Initializing the variables related to optimization
         InitializeOptimization();
         
@@ -197,9 +204,6 @@ public class FluidSimulation : MonoBehaviour
         
         // Initializing the bounds of the simulation
         UpdateBoundsVariables();
-        
-        // Initializing the particles
-        InitializeParticles();
         
         // Initializing the variables of the compute shader
         InitializeSimulationComputeShader();
@@ -341,6 +345,9 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void InitializeParticles()
     {
+        // Initialzing the particles amount
+        particlesAmount = _fluidSpawner.GetParticlesAmount();
+        
         // Initializing the particles related arrays
         _positions = new Vector3[particlesAmount];
         _predictedPositions = new Vector3[particlesAmount];
@@ -350,6 +357,11 @@ public class FluidSimulation : MonoBehaviour
         // Initializing the gravity acceleration
         _gravityAcceleration = gravity * Vector3.down;
         
+        // Setting the positions equal to the one provided by the fluid spawner
+        _positions = _fluidSpawner.GetSpawnPositions();
+        
+        return;
+
         // Initializing the particles position based on the algorithm selected via editor
         switch (initializationAlgorithm)
         {
@@ -380,12 +392,12 @@ public class FluidSimulation : MonoBehaviour
                     var zIndex = i / (particlesPerRow * particlesPerRow);
                     var yIndex = (i / particlesPerRow) % particlesPerCol;
                     var xIndex = i % particlesPerRow;
-
+        
                     // Computing the new coordinates
                     var x = (xIndex - particlesPerRow / 2.0f + 0.5f) * spacing;
                     var y = (yIndex - particlesPerRow / 2.0f + 0.5f) * spacing;
                     var z = (zIndex - particlesPerRow / 2.0f + 0.5f) * spacing;
-
+        
                     _positions[i] = new Vector3(x, y, z);
                 }
                 break;
@@ -499,7 +511,11 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void OnDrawGizmos()
     {
-        // Drawing the bounding gizmo
+        // If the simulation is running, return
+        if (Application.isPlaying)
+            return;
+        
+        // Drawing the simulation bounding box
         Gizmos.color = Color.white;
         Gizmos.DrawWireCube(new Vector3(0, 0, 0), bounds);
     }
@@ -514,6 +530,9 @@ public class FluidSimulation : MonoBehaviour
         _predictedPositionsBuffer?.Release();
         _velocitiesBuffer?.Release();
         _densitiesBuffer?.Release();
+        _auxiliaryPositionsBuffer?.Release();
+        _auxiliaryPredictedPositionsBuffer?.Release();
+        _auxiliaryVelocitiesBuffer?.Release();
         
         // Releasing the buffers allocated by the spatial grid
         _spatialGrid?.Release();
@@ -540,7 +559,7 @@ public class FluidSimulation : MonoBehaviour
         var stepDeltaTime = deltaTime / simulationSubSteps;
         
         // Setting the delta time in the GPU
-        _simulationComputeShader.SetFloat("delta_time", stepDeltaTime);
+        _simulationComputeShader.SetFloat(_deltaTimeID, stepDeltaTime);
         
         // Running multiple simulation steps 
         for (var i = 0; i < simulationSubSteps; i++)
