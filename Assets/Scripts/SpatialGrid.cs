@@ -70,7 +70,7 @@ public class SpatialGrid
     /// <summary>
     /// Updates the spatial lookup buffers by using the data contained within the SpatialKeys buffer.
     /// </summary>
-    public void UpdateSpatialLookup()
+    public void Update()
     {
         // Computing the histogram of the keys value
         _spatialGridComputeShader.Dispatch(_calculateHistogramAndResetOffsetsKernelID,

@@ -1,9 +1,10 @@
 // Each #kernel tells which function to compile; you can have many kernels
-#pragma kernel calculate_predicted_and_keys
+#pragma kernel update_predicted_positions
+#pragma kernel update_spatial_keys
 #pragma kernel reorder_buffers
 #pragma kernel copy_auxiliary_in_main
-#pragma kernel calculate_density
-#pragma kernel calculate_delta_velocity
+#pragma kernel update_density
+#pragma kernel update_position_and_velocity
 
 // CONSTANTS
 static const int thread_group_size = 256;
@@ -191,6 +192,54 @@ uint hash_cell(int3 cell_coords)
     return hash % particles_amount;
 }
 
+// Given a position in world space, returns the density at the position
+float3 calculate_density_at_position(float3 position)
+{
+    // Computing the coordinates of the grid cell containing the target particle
+    int3 target_cell_coords = position_to_cell_coords(position);
+
+    // Initializing the density of the target particle
+    float density = 0.0f;
+    
+    // Neighbours search
+    for(int i = 0; i < 27; i++)
+    {
+        // Computing the current cell coordinates
+        int3 current_cell_coords = target_cell_coords + cell_offsets_3D[i];
+        
+        // Computing the key of the central cell + the current offset
+        uint current_cell_key = hash_cell(current_cell_coords);
+        
+        // Iterating all neighbours within the current cell
+        for(uint current_particle_index = spatial_offsets[current_cell_key];
+            current_particle_index < particles_amount && spatial_keys[current_particle_index] == current_cell_key;
+            current_particle_index++)
+        {
+            // Storing the predicted position of the current particle
+            float3 current_particle_pred_pos = predicted_positions[current_particle_index];
+            
+            // Verifying that the current particle actually belongs to the current cell
+            if(!are_int3_equal(current_cell_coords, position_to_cell_coords(current_particle_pred_pos)))
+                continue;
+            
+            // Computing the vector between the current particle and the target
+            float3 current_to_target = current_particle_pred_pos - position;
+    
+            // Computing the squared distance
+            float sqr_distance = dot(current_to_target, current_to_target);
+    
+            // If the particle is outside kernel radius, continue
+            if(sqr_distance >= sqr_kernel_radius)
+                continue;
+    
+            // Adding the current particle influence to the target particle density
+            density += particle_mass * poly6(sqr_distance);
+        }
+    }
+
+    return density;
+}
+
 [numthreads(thread_group_size, 1, 1)]
 void reorder_buffers(uint target_particle_index : SV_DispatchThreadID)
 {
@@ -221,7 +270,7 @@ void copy_auxiliary_in_main(uint target_particle_index : SV_DispatchThreadID)
 }
 
 [numthreads(thread_group_size, 1, 1)]
-void calculate_predicted_and_keys(uint target_particle_index : SV_DispatchThreadID)
+void update_predicted_positions(uint target_particle_index : SV_DispatchThreadID)
 {
     // Apply the process only using valid ids
     if(target_particle_index >= particles_amount)
@@ -236,69 +285,45 @@ void calculate_predicted_and_keys(uint target_particle_index : SV_DispatchThread
         + target_particle_vel * delta_time
         + gravity_acceleration * delta_time;
 
+    // Storing the computed data in the global buffer
+    predicted_positions[target_particle_index] = target_particle_pred_pos;
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void update_spatial_keys(uint target_particle_index : SV_DispatchThreadID)
+{
+    // Apply the process only using valid ids
+    if(target_particle_index >= particles_amount)
+        return;
+
+    // Computing the predicted position of the target particle
+    float3 target_particle_pred_pos = predicted_positions[target_particle_index];
+
     // Computing the spatial key of the target particle predicted position
     uint target_particle_spatial_key = hash_cell(position_to_cell_coords(target_particle_pred_pos));
 
     // Storing the computed data in the global buffer
-    predicted_positions[target_particle_index] = target_particle_pred_pos;
     spatial_keys[target_particle_index] = target_particle_spatial_key;
 }
 
 [numthreads(thread_group_size, 1, 1)]
-void calculate_density(uint target_particle_index : SV_DispatchThreadID)
+void update_density(uint target_particle_index : SV_DispatchThreadID)
 {
-    // Initializing the density of the target particle
-    float density = 0.0f;
-    
-    // Storing the target particles predicted position
-    float3 target_particle_pred_pos = predicted_positions[target_particle_index];
-
-    // Computing the coordinates of the grid cell containing the target particle
-    int3 target_cell_coords = position_to_cell_coords(target_particle_pred_pos);
-    
-    // Neighbours search
-    for(int i = 0; i < 27; i++)
-    {
-        // Computing the current cell coordinates
-        int3 current_cell_coords = target_cell_coords + cell_offsets_3D[i];
-        
-        // Computing the key of the central cell + the current offset
-        uint current_cell_key = hash_cell(current_cell_coords);
-        
-        // Iterating all neighbours within the current cell
-        for(uint current_particle_index = spatial_offsets[current_cell_key];
-            current_particle_index < particles_amount && spatial_keys[current_particle_index] == current_cell_key;
-            current_particle_index++)
-        {
-            // Storing the predicted position of the current particle
-            float3 current_particle_pred_pos = predicted_positions[current_particle_index];
-            
-            // Verifying that the current particle actually belongs to the current cell
-            if(!are_int3_equal(current_cell_coords, position_to_cell_coords(current_particle_pred_pos)))
-                continue;
-            
-            // Computing the vector between the current particle and the target
-            float3 current_to_target = current_particle_pred_pos - target_particle_pred_pos;
-    
-            // Computing the squared distance
-            float sqr_distance = dot(current_to_target, current_to_target);
-    
-            // If the particle is outside kernel radius, continue
-            if(sqr_distance >= sqr_kernel_radius)
-                continue;
-    
-            // Adding the current particle influence to the target particle density
-            density += particle_mass * poly6(sqr_distance);
-        }
-    }
+    // Apply the process only using valid ids
+    if(target_particle_index >= particles_amount)
+        return;
     
     // Updating target particle density
-    densities[target_particle_index] = density;
+    densities[target_particle_index] = calculate_density_at_position(predicted_positions[target_particle_index]);
 }
 
 [numthreads(thread_group_size, 1, 1)]
-void calculate_delta_velocity(uint target_particle_index : SV_DispatchThreadID)
+void update_position_and_velocity(uint target_particle_index : SV_DispatchThreadID)
 {
+    // Apply the process only using valid ids
+    if(target_particle_index >= particles_amount)
+        return;
+    
     // Initializing the new acceleration of the target particle
     float3 internal_force = 0.0f;
 
@@ -307,7 +332,7 @@ void calculate_delta_velocity(uint target_particle_index : SV_DispatchThreadID)
     float3 target_particle_velocity = velocities[target_particle_index];
     float target_particle_density = densities[target_particle_index];
 
-            // Computing the coordinates of the grid cell containing the target particle
+    // Computing the coordinates of the grid cell containing the target particle
     int3 target_cell_coords = position_to_cell_coords(target_particle_pred_pos);
     
     // Neighbours search

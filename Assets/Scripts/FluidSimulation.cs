@@ -69,6 +69,7 @@ public class FluidSimulation : MonoBehaviour
     private SpatialEntry[] _spatialLookup;
     private int[] _lookupStartIndex;
     private List<SpatialEntry>[] _buckets;
+    private uint _stepsSinceLastSpatialUpdate;
     
     // Array of neighbours particles
     private static readonly Vector3Int[] CellOffsets =
@@ -156,11 +157,12 @@ public class FluidSimulation : MonoBehaviour
 
     private SpatialGrid _spatialGrid;
 
-    private int _predictedAndKeysKernelID;
+    private int _predictedPositionKernelID;
+    private int _spatialKeysKernelID;
     private int _reorderKernelID;
     private int _copyAuxiliaryInMainKernelID;
     private int _densityKernelID;
-    private int _deltaVelocityKernelID;
+    private int _positionAndVelocityKernelID;
 
     #endregion
 
@@ -202,7 +204,7 @@ public class FluidSimulation : MonoBehaviour
         
         // Initializing the variables related to the rendering pipeline
         InitializeParticleShader();
-
+        
         // Call to the debug function, used for debugging (duh)
         // preSortKeys = new uint[particlesAmount];
         // postSortKeys = new uint[particlesAmount];
@@ -314,8 +316,6 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void InitializeOptimization()
     {
-        // CPU
-        
         // Initializing the optimization related arrays
         _spatialLookup = new SpatialEntry[_particlesAmount];
         _lookupStartIndex = new int[_particlesAmount];
@@ -328,8 +328,6 @@ public class FluidSimulation : MonoBehaviour
         {
             _buckets[i] = new List<SpatialEntry>();
         }
-        
-        // GPU
         
         // Initializing the GPU implementation of the spatial grid
         _spatialGrid = new SpatialGrid(_particlesAmount);
@@ -383,15 +381,19 @@ public class FluidSimulation : MonoBehaviour
         // Caching the reference ID of the ComputeShader's kernels
         _reorderKernelID = _simulationComputeShader.FindKernel("reorder_buffers");
         _copyAuxiliaryInMainKernelID = _simulationComputeShader.FindKernel("copy_auxiliary_in_main");
-        _predictedAndKeysKernelID = _simulationComputeShader.FindKernel("calculate_predicted_and_keys");
-        _densityKernelID = _simulationComputeShader.FindKernel("calculate_density");
-        _deltaVelocityKernelID = _simulationComputeShader.FindKernel("calculate_delta_velocity");
+        _predictedPositionKernelID = _simulationComputeShader.FindKernel("update_predicted_positions");
+        _spatialKeysKernelID = _simulationComputeShader.FindKernel("update_spatial_keys");
+        _densityKernelID = _simulationComputeShader.FindKernel("update_density");
+        _positionAndVelocityKernelID = _simulationComputeShader.FindKernel("update_position_and_velocity");
         
         // Setting the buffers for the predicted positions kernel
-        _simulationComputeShader.SetBuffer(_predictedAndKeysKernelID, _positionsBufferID, _positionsBuffer);
-        _simulationComputeShader.SetBuffer(_predictedAndKeysKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
-        _simulationComputeShader.SetBuffer(_predictedAndKeysKernelID, _velocitiesBufferID, _velocitiesBuffer);
-        _simulationComputeShader.SetBuffer(_predictedAndKeysKernelID, _spatialKeysBufferID, _spatialGrid.SpatialKeysBuffer);
+        _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _positionsBufferID, _positionsBuffer);
+        _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _velocitiesBufferID, _velocitiesBuffer);
+        
+        // Setting the buffers for the spatial keys kernel
+        _simulationComputeShader.SetBuffer(_spatialKeysKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        _simulationComputeShader.SetBuffer(_spatialKeysKernelID, _spatialKeysBufferID, _spatialGrid.SpatialKeysBuffer);
         
         // Setting the buffers for the reorder kernel
         _simulationComputeShader.SetBuffer(_reorderKernelID, _spatialIndicesBufferID, _spatialGrid.SpatialIndicesBuffer);
@@ -418,13 +420,13 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetBuffer(_densityKernelID, _spatialOffsetsBufferID, _spatialGrid.SpatialOffsetsBuffer);
         
         // Setting the buffers for the delta velocity kernel
-        _simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _positionsBufferID, _positionsBuffer);
-        _simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
-        _simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _velocitiesBufferID, _velocitiesBuffer);
-        _simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _densitiesBufferID, _densitiesBuffer);
-        _simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _spatialKeysBufferID, _spatialGrid.SpatialKeysBuffer);
-        _simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _spatialIndicesBufferID, _spatialGrid.SpatialIndicesBuffer);
-        _simulationComputeShader.SetBuffer(_deltaVelocityKernelID, _spatialOffsetsBufferID, _spatialGrid.SpatialOffsetsBuffer);
+        _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _positionsBufferID, _positionsBuffer);
+        _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _velocitiesBufferID, _velocitiesBuffer);
+        _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _densitiesBufferID, _densitiesBuffer);
+        _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _spatialKeysBufferID, _spatialGrid.SpatialKeysBuffer);
+        _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _spatialIndicesBufferID, _spatialGrid.SpatialIndicesBuffer);
+        _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _spatialOffsetsBufferID, _spatialGrid.SpatialOffsetsBuffer);
         
         UpdateComputeShaderVariables();
     }
@@ -522,24 +524,31 @@ public class FluidSimulation : MonoBehaviour
         for (var i = 0; i < simulationSubSteps; i++)
         {
             // Dispatching the predicted position kernel
-            _simulationComputeShader.Dispatch(_predictedAndKeysKernelID, 
+            _simulationComputeShader.Dispatch(_predictedPositionKernelID, 
+                Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
+            
+            // Dispatching the spatial keys kernel
+            _simulationComputeShader.Dispatch(_spatialKeysKernelID, 
                 Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
             
             // Updating the spatial data
-            _spatialGrid.UpdateSpatialLookup();
-            
+            _spatialGrid.Update();
+    
             // Dispatching the reorder kernel
-            _simulationComputeShader.Dispatch(_reorderKernelID, Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
+            _simulationComputeShader.Dispatch(_reorderKernelID, 
+                Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
 
             // Dispatching the copy auxiliary in main kernel
             _simulationComputeShader.Dispatch(_copyAuxiliaryInMainKernelID, 
                 Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
             
             // Dispatching the density kernel
-            _simulationComputeShader.Dispatch(_densityKernelID, Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
+            _simulationComputeShader.Dispatch(_densityKernelID, 
+                Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
             
             // Dispatching the delta velocities kernel
-            _simulationComputeShader.Dispatch(_deltaVelocityKernelID, Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
+            _simulationComputeShader.Dispatch(_positionAndVelocityKernelID, 
+                Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
         }
 
         return;
