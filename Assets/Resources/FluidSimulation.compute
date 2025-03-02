@@ -438,6 +438,9 @@ void update_density_map (uint3 target_density_map_index : SV_DispatchThreadID)
     // Computing the equivalent in simulation local space
     float3 local_pos = (normalized_texture_pos - 0.5) * bounds_size;
 
+    // Converting the position in world space
+    float3 world_pos = mul(local_to_world, float4(local_pos, 1.0f)).xyz;
+
     // Storing the density value
-    density_map[target_density_map_index] = calculate_density_at_position(local_pos);
+    density_map[target_density_map_index] = calculate_density_at_position(world_pos);
 }

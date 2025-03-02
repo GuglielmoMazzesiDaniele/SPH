@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Serialization;
+using UnityEngine.XR;
 using Random = UnityEngine.Random;
 using Vector2 = UnityEngine.Vector2;
 using Vector3 = UnityEngine.Vector3;
@@ -47,7 +48,10 @@ public class FluidSimulation : MonoBehaviour
     private FluidSpawner _fluidSpawner;
     
     // Reference to the ray marching 
-    private RayMarchingFluid _rayMarchingFluid;
+    private RayMarchedFluid _rayMarchedFluid;
+    
+    // Fields related to user input
+    private bool _isSimulationPlaying = true;
     
     // Particles related fields
     private int _particlesAmount;
@@ -174,14 +178,6 @@ public class FluidSimulation : MonoBehaviour
     private int _updateDensityMapKernelID;
 
     #endregion
-
-    // private uint[] preSortKeys;
-    // private uint[] postSortKeys;
-    // private uint[] offsets;
-    // private uint[] indices;
-    // private float[] densities;
-    // private Vector3[] predictedPositions;
-    // private Vector3[] positions;
     
     #region Initialization
 
@@ -197,7 +193,7 @@ public class FluidSimulation : MonoBehaviour
         _fluidSpawner = GetComponent<FluidSpawner>();
         
         // Linking the ray marching
-        _rayMarchingFluid = GetComponent<RayMarchingFluid>();
+        _rayMarchedFluid = GetComponent<RayMarchedFluid>();
         
         // Initializing the particles
         InitializeParticles();
@@ -217,15 +213,6 @@ public class FluidSimulation : MonoBehaviour
         // Initializing the variables related to the rendering pipeline
         InitializeParticleShader();
         
-        // Call to the debug function, used for debugging (duh)
-        // preSortKeys = new uint[particlesAmount];
-        // postSortKeys = new uint[particlesAmount];
-        // offsets = new uint[particlesAmount];
-        // indices = new uint[particlesAmount];
-        // densities = new float[particlesAmount];
-        // predictedPositions = new Vector3[particlesAmount];
-        // positions = new Vector3[particlesAmount];
-        // InternalDebug();
     }
 
     /// <summary>
@@ -233,36 +220,6 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void InternalDebug()
     {
-        // // Dispatching the predicted position and spatial keys kernel
-        // _simulationComputeShader.Dispatch(_predictedAndKeysKernelID, Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
-        //
-        // // Debugging arrays
-        // _spatialGrid.SpatialKeysBuffer.GetData(preSortKeys);
-        //
-        // // Updating the spatial data
-        // _spatialGrid.UpdateSpatialLookup();
-        //
-        // // Debugging arrays
-        // _spatialGrid.SpatialKeysBuffer.GetData(postSortKeys);
-        // _spatialGrid.SpatialOffsetsBuffer.GetData(offsets);
-        // _spatialGrid.SpatialIndicesBuffer.GetData(indices);
-        // _predictedPositionsBuffer.GetData(predictedPositions);
-        //
-        // // Dispatching the reorder kernel
-        // _simulationComputeShader.Dispatch(_reorderKernelID, Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
-        //
-        // // Dispatching the copy auxiliary in main kernel
-        // _simulationComputeShader.Dispatch(_copyAuxiliaryInMainKernelID, 
-        //     Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
-        //
-        // // Dispatching the density kernel
-        // _simulationComputeShader.Dispatch(_densityKernelID, _particlesAmount / 256 + 1, 1, 1);
-        //
-        // // Dispatching the delta velocities kernel
-        // _simulationComputeShader.Dispatch(_deltaVelocityKernelID, Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
-        //
-        // _densitiesBuffer.GetData(densities);
-        // _predictedPositionsBuffer.GetData(positions);
     }
 
     /// <summary>
@@ -442,7 +399,7 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _spatialOffsetsBufferID, _spatialGrid.SpatialOffsetsBuffer);
         
         // Setting the texture for the density map kernel
-        _simulationComputeShader.SetTexture(_updateDensityMapKernelID, _densityMapID, _rayMarchingFluid.densityMap);
+        _simulationComputeShader.SetTexture(_updateDensityMapKernelID, _densityMapID, _rayMarchedFluid.densityMap);
         _simulationComputeShader.SetBuffer(_updateDensityMapKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
         _simulationComputeShader.SetBuffer(_updateDensityMapKernelID, _spatialKeysBufferID, _spatialGrid.SpatialKeysBuffer);
         _simulationComputeShader.SetBuffer(_updateDensityMapKernelID, _spatialIndicesBufferID, _spatialGrid.SpatialIndicesBuffer);
@@ -459,8 +416,8 @@ public class FluidSimulation : MonoBehaviour
         // Setting ComputeShader's vectors
         _simulationComputeShader.SetVector(_halfBoundsSizeID, _halfBoundsSize);
         _simulationComputeShader.SetVector(_boundsSizeID, boundsSize);
-        _simulationComputeShader.SetInts(_densityMapSizeID, _rayMarchingFluid.size.x, 
-            _rayMarchingFluid.size.y, _rayMarchingFluid.size.z);
+        _simulationComputeShader.SetInts(_densityMapSizeID, _rayMarchedFluid.size.x, 
+            _rayMarchedFluid.size.y, _rayMarchedFluid.size.z);
         
         // Setting ComputeShader's matrices
         _simulationComputeShader.SetMatrix(_localToWorldMatrixID, transform.localToWorldMatrix);
@@ -524,6 +481,13 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void Update()
     {
+        // Handling possible user's inputs
+        HandleInputs();
+        
+        // If the simulation is not running, do no execute simulation step
+        if (!_isSimulationPlaying)
+            return;
+        
         // Updating the variables related to the kernels
         UpdateKernelVariables();
         
@@ -576,9 +540,9 @@ public class FluidSimulation : MonoBehaviour
         
         // Updating the density map
         _simulationComputeShader.Dispatch(_updateDensityMapKernelID,
-            Mathf.CeilToInt(_rayMarchingFluid.size.x / 8.0f), 
-            Mathf.CeilToInt(_rayMarchingFluid.size.y / 8.0f), 
-            Mathf.CeilToInt(_rayMarchingFluid.size.z / 8.0f));
+            Mathf.CeilToInt(_rayMarchedFluid.size.x / 8.0f), 
+            Mathf.CeilToInt(_rayMarchedFluid.size.y / 8.0f), 
+            Mathf.CeilToInt(_rayMarchedFluid.size.z / 8.0f));
 
         return;
         
@@ -610,6 +574,22 @@ public class FluidSimulation : MonoBehaviour
         
         // Render the particles
         Graphics.RenderPrimitives(renderingParameters, MeshTopology.Points, _particlesAmount);
+    }
+    
+    #endregion
+    
+    # region Input
+
+    /// <summary>
+    /// Handles the input pressed by the user.
+    /// </summary>
+    private void HandleInputs()
+    {
+        // Flipping whether the simulation is running on space bar pressed
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            _isSimulationPlaying = !_isSimulationPlaying;
+        }
     }
     
     #endregion

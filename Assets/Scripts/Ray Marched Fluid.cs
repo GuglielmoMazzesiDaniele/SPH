@@ -1,7 +1,6 @@
 using UnityEngine;
-using UnityEngine.Serialization;
 
-public class RayMarchingFluid : MonoBehaviour
+public class RayMarchedFluid : MonoBehaviour
 {
     [Header("Density Map")] 
     [SerializeField] public Vector3Int size;
@@ -9,6 +8,7 @@ public class RayMarchingFluid : MonoBehaviour
     [Header("Density Slice")] 
     [SerializeField] public Material sliceMaterial;
     [SerializeField] [Range(0.0f, 1.0f)] public float sliceDepth;
+    [SerializeField] public Vector2 depictedDensityRange;
     
     // Density map
     [HideInInspector] public RenderTexture densityMap;
@@ -22,10 +22,12 @@ public class RayMarchingFluid : MonoBehaviour
     // Slice density shader's variables IDs
     private readonly int _densityMapSliceID = Shader.PropertyToID("_DensityMap");
     private readonly int _sliceDepthID = Shader.PropertyToID("_SliceDepth");
+    private readonly int _sliceMinDensityID = Shader.PropertyToID("_MinDensityValue");
+    private readonly int _sliceMaxDensityID = Shader.PropertyToID("_MaxDensityValue");
     
     # region Unity Callback Functions
 
-    private void Start()
+    private void Awake()
     {
         // Binding the compute shader
         _rayMarchingComputeShader = Resources.Load<ComputeShader>("RayMarching");
@@ -47,24 +49,27 @@ public class RayMarchingFluid : MonoBehaviour
         
         // Creating the density map
         densityMap.Create();
+        
+        // Assigning the density map to the material
+        sliceMaterial.SetTexture(_densityMapSliceID, densityMap);
     }
 
     private void Update()
     {
-        // // Create a readable CPU copy of the 3D texture
-        // var debugTexture = new Texture3D(densityMap.width, densityMap.height, densityMap.volumeDepth, TextureFormat.RFloat, false);
-        //
-        // Graphics.CopyTexture(densityMap, debugTexture);
-        //
-        // // Read and print some values from the CPU copy
-        // var value = debugTexture.GetPixel(0, 0, 0);
-        // Debug.Log($"Density value at (0,0,0): {value.r}");
-        
-        // Assigning the density map to the material
-        sliceMaterial.SetTexture(_densityMapSliceID, densityMap);
-        
+        UpdateDensitySliceVariables();
+    }
+
+    /// <summary>
+    /// Updates the variable used by the density slice material
+    /// </summary>
+    private void UpdateDensitySliceVariables()
+    {
         // Assigning the slice depth to the material
         sliceMaterial.SetFloat(_sliceDepthID, sliceDepth);
+        
+        // Setting the range of densities to depict
+        sliceMaterial.SetFloat(_sliceMinDensityID, depictedDensityRange.x);
+        sliceMaterial.SetFloat(_sliceMaxDensityID, depictedDensityRange.y);
     }
 
     #endregion
