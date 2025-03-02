@@ -12,13 +12,13 @@ public class SpatialGrid
     // Internal auxiliary buffers used to execute exclusive prefix sum, sorting and offsets computation
     private ComputeBuffer _sortedKeysBuffer;
     private ComputeBuffer _sortedIndicesBuffer;
-    public ComputeBuffer _keysHistogramBuffer;
+    private ComputeBuffer _keysHistogramBuffer;
     
     // Internal pool of buffers, used to execute recursive exclusive prefix sum algorithm
-    private Dictionary<int, ComputeBuffer> _buffersPool = new();
+    private readonly Dictionary<int, ComputeBuffer> _buffersPool = new();
     
     // Internal reference to the spatial grid ComputeShader
-    private ComputeShader _spatialGridComputeShader;
+    private readonly ComputeShader _spatialGridComputeShader;
     
     // Amount of particles currently active in the simulation
     private readonly int _particlesAmount;

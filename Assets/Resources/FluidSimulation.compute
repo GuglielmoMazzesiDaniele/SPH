@@ -5,6 +5,7 @@
 #pragma kernel copy_auxiliary_in_main
 #pragma kernel update_density
 #pragma kernel update_position_and_velocity
+#pragma kernel update_density_map
 
 // CONSTANTS
 static const int thread_group_size = 256;
@@ -21,6 +22,9 @@ RWStructuredBuffer<float> densities;
 RWStructuredBuffer<uint> spatial_keys;
 RWStructuredBuffer<uint> spatial_indices;
 RWStructuredBuffer<uint> spatial_offsets;
+
+// Ray-marching rendering texture map
+RWTexture3D<float> density_map;
 
 // Auxiliary buffers used during the resorting process
 RWStructuredBuffer<float3> auxiliary_positions;
@@ -71,6 +75,7 @@ float rest_density;
 float stiffness;
 float viscosity;
 float collision_damping;
+float3 bounds_size;
 float3 half_bounds_size;
 float4x4 world_to_local;
 float4x4 local_to_world;
@@ -81,6 +86,9 @@ float sqr_kernel_radius;
 float poly6_normalization;
 float spiky_gradient_first_term;
 float viscosity_laplacian_first_term;
+
+// Ray-marching related fields
+const int3 density_map_size;
 
 // Computes the influence at the given squared distance using the kernel: (radius^2 - distance^2)^3
 float poly6(float sqr_distance)
@@ -413,4 +421,23 @@ void update_position_and_velocity(uint target_particle_index : SV_DispatchThread
     
     // Collision detection
     resolve_collision(target_particle_index);
+}
+
+[numthreads(8, 8, 8)]
+void update_density_map (uint3 target_density_map_index : SV_DispatchThreadID)
+{
+    // If the thread is situated outside the density map, skip
+    if(target_density_map_index.x >= density_map_size.x ||
+        target_density_map_index.y >= density_map_size.y ||
+        target_density_map_index.z >= density_map_size.z)
+        return;
+    
+    // Computing the normalized coordinates within the texture
+    float3 normalized_texture_pos = target_density_map_index / (density_map_size - 1.0f);
+
+    // Computing the equivalent in simulation local space
+    float3 local_pos = (normalized_texture_pos - 0.5) * bounds_size;
+
+    // Storing the density value
+    density_map[target_density_map_index] = calculate_density_at_position(local_pos);
 }

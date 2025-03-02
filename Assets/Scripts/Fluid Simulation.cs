@@ -46,6 +46,9 @@ public class FluidSimulation : MonoBehaviour
     // Reference to the particles spawner
     private FluidSpawner _fluidSpawner;
     
+    // Reference to the ray marching 
+    private RayMarchingFluid _rayMarchingFluid;
+    
     // Particles related fields
     private int _particlesAmount;
     private Vector3[] _positions;
@@ -54,7 +57,7 @@ public class FluidSimulation : MonoBehaviour
     private float[] _densities;
     
     // Bounds related fields
-    private Vector3 _halfBounds;
+    private Vector3 _halfBoundsSize;
     
     // Simulation related fields
     private Vector3 _gravityAcceleration;
@@ -69,7 +72,6 @@ public class FluidSimulation : MonoBehaviour
     private SpatialEntry[] _spatialLookup;
     private int[] _lookupStartIndex;
     private List<SpatialEntry>[] _buckets;
-    private uint _stepsSinceLastSpatialUpdate;
     
     // Array of neighbours particles
     private static readonly Vector3Int[] CellOffsets =
@@ -104,13 +106,17 @@ public class FluidSimulation : MonoBehaviour
     };
     
     // Shaders related fields
-    private readonly int _halfBoundsID = Shader.PropertyToID("half_bounds_size");
+    private readonly int _halfBoundsSizeID = Shader.PropertyToID("half_bounds_size");
+    private readonly int _boundsSizeID = Shader.PropertyToID("bounds_size");
     private readonly int _collisionDampingID = Shader.PropertyToID("collision_damping");
 
     private readonly int _worldToLocalMatrixID = Shader.PropertyToID("world_to_local");
     private readonly int _localToWorldMatrixID = Shader.PropertyToID("local_to_world");
 
     private readonly int _deltaTimeID = Shader.PropertyToID("delta_time");
+    
+    private readonly int _densityMapID = Shader.PropertyToID("density_map");
+    private readonly int _densityMapSizeID = Shader.PropertyToID("density_map_size");
     
     private readonly int _gravityID = Shader.PropertyToID("gravity");
     private readonly int _gravityAccelerationID = Shader.PropertyToID("gravity_acceleration");
@@ -144,25 +150,28 @@ public class FluidSimulation : MonoBehaviour
 
     #region GPU Related Fields
     
+    // Simulation Compute Shader's buffers
     private ComputeBuffer _positionsBuffer;
     private ComputeBuffer _predictedPositionsBuffer;
     private ComputeBuffer _velocitiesBuffer;
     private ComputeBuffer _densitiesBuffer;
-
     private ComputeBuffer _auxiliaryPositionsBuffer;
     private ComputeBuffer _auxiliaryPredictedPositionsBuffer;
     private ComputeBuffer _auxiliaryVelocitiesBuffer;
-
+    
+    // Particles material gradient texture
     private Texture2D _speedGradientTexture;
-
+    
     private SpatialGrid _spatialGrid;
 
+    // Kernel IDs
     private int _predictedPositionKernelID;
     private int _spatialKeysKernelID;
     private int _reorderKernelID;
     private int _copyAuxiliaryInMainKernelID;
     private int _densityKernelID;
     private int _positionAndVelocityKernelID;
+    private int _updateDensityMapKernelID;
 
     #endregion
 
@@ -186,6 +195,9 @@ public class FluidSimulation : MonoBehaviour
         
         // Linking the fluid spawner
         _fluidSpawner = GetComponent<FluidSpawner>();
+        
+        // Linking the ray marching
+        _rayMarchingFluid = GetComponent<RayMarchingFluid>();
         
         // Initializing the particles
         InitializeParticles();
@@ -308,7 +320,7 @@ public class FluidSimulation : MonoBehaviour
     private void UpdateBoundsVariables()
     {
         // Computing the maximum particles coordinates per axis
-        _halfBounds = boundsSize / 2 - Vector3.one * particleRadius;
+        _halfBoundsSize = boundsSize / 2 - Vector3.one * particleRadius;
     }
     
     /// <summary>
@@ -374,7 +386,7 @@ public class FluidSimulation : MonoBehaviour
         _velocitiesBuffer.SetData(_velocities);
         _densitiesBuffer.SetData(_densities);
         
-        // Setting the particles amount
+        // Setting not dynamic variables
         _simulationComputeShader.SetInt("particles_amount", _particlesAmount);
         _simulationComputeShader.SetFloat("particle_mass", particleMass);
         
@@ -385,7 +397,8 @@ public class FluidSimulation : MonoBehaviour
         _spatialKeysKernelID = _simulationComputeShader.FindKernel("update_spatial_keys");
         _densityKernelID = _simulationComputeShader.FindKernel("update_density");
         _positionAndVelocityKernelID = _simulationComputeShader.FindKernel("update_position_and_velocity");
-        
+        _updateDensityMapKernelID = _simulationComputeShader.FindKernel("update_density_map");
+            
         // Setting the buffers for the predicted positions kernel
         _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _positionsBufferID, _positionsBuffer);
         _simulationComputeShader.SetBuffer(_predictedPositionKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
@@ -428,6 +441,13 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _spatialIndicesBufferID, _spatialGrid.SpatialIndicesBuffer);
         _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _spatialOffsetsBufferID, _spatialGrid.SpatialOffsetsBuffer);
         
+        // Setting the texture for the density map kernel
+        _simulationComputeShader.SetTexture(_updateDensityMapKernelID, _densityMapID, _rayMarchingFluid.densityMap);
+        _simulationComputeShader.SetBuffer(_updateDensityMapKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        _simulationComputeShader.SetBuffer(_updateDensityMapKernelID, _spatialKeysBufferID, _spatialGrid.SpatialKeysBuffer);
+        _simulationComputeShader.SetBuffer(_updateDensityMapKernelID, _spatialIndicesBufferID, _spatialGrid.SpatialIndicesBuffer);
+        _simulationComputeShader.SetBuffer(_updateDensityMapKernelID, _spatialOffsetsBufferID, _spatialGrid.SpatialOffsetsBuffer);
+        
         UpdateComputeShaderVariables();
     }
 
@@ -437,7 +457,10 @@ public class FluidSimulation : MonoBehaviour
     private void UpdateComputeShaderVariables()
     {
         // Setting ComputeShader's vectors
-        _simulationComputeShader.SetVector(_halfBoundsID, _halfBounds);
+        _simulationComputeShader.SetVector(_halfBoundsSizeID, _halfBoundsSize);
+        _simulationComputeShader.SetVector(_boundsSizeID, boundsSize);
+        _simulationComputeShader.SetInts(_densityMapSizeID, _rayMarchingFluid.size.x, 
+            _rayMarchingFluid.size.y, _rayMarchingFluid.size.z);
         
         // Setting ComputeShader's matrices
         _simulationComputeShader.SetMatrix(_localToWorldMatrixID, transform.localToWorldMatrix);
@@ -547,9 +570,15 @@ public class FluidSimulation : MonoBehaviour
                 Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
             
             // Dispatching the delta velocities kernel
-            _simulationComputeShader.Dispatch(_positionAndVelocityKernelID, 
+            _simulationComputeShader.Dispatch(_positionAndVelocityKernelID,
                 Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
         }
+        
+        // Updating the density map
+        _simulationComputeShader.Dispatch(_updateDensityMapKernelID,
+            Mathf.CeilToInt(_rayMarchingFluid.size.x / 8.0f), 
+            Mathf.CeilToInt(_rayMarchingFluid.size.y / 8.0f), 
+            Mathf.CeilToInt(_rayMarchingFluid.size.z / 8.0f));
 
         return;
         
@@ -741,28 +770,28 @@ public class FluidSimulation : MonoBehaviour
     private void ResolveCollisions(ref Vector3 position,ref Vector3 velocity)
     {
         // Case in which the particle collided with the bounds on X-axis
-        if (Mathf.Abs(position.x) > _halfBounds.x)
+        if (Mathf.Abs(position.x) > _halfBoundsSize.x)
         {
             // Setting the position x to the maximum
-            position.x = _halfBounds.x * Mathf.Sign(position.x);
+            position.x = _halfBoundsSize.x * Mathf.Sign(position.x);
             // Flipping the velocity sign and applying a damping
             velocity.x *= -collisionDamping;
         }
         
         // Case in which the particle collided with the bounds on Y-axis
-        if (Mathf.Abs(position.y) > _halfBounds.y)
+        if (Mathf.Abs(position.y) > _halfBoundsSize.y)
         {
             // Setting the position y to the maximum
-            position.y = _halfBounds.y * Mathf.Sign(position.y);
+            position.y = _halfBoundsSize.y * Mathf.Sign(position.y);
             // Flipping the velocity sign and applying a damping
             velocity.y *= -collisionDamping;
         }
         
         // Case in which the particle collided with the bound on Z-Axis
-        if (Mathf.Abs(position.z) > _halfBounds.z)
+        if (Mathf.Abs(position.z) > _halfBoundsSize.z)
         {
             // Setting the position y to the maximum
-            position.z = _halfBounds.z * Mathf.Sign(position.z);
+            position.z = _halfBoundsSize.z * Mathf.Sign(position.z);
             // Flipping the velocity sign and applying a damping
             velocity.z *= -collisionDamping;
         }
