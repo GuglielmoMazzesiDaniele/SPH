@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 
 public class RayMarchedFluid : MonoBehaviour
@@ -26,7 +27,7 @@ public class RayMarchedFluid : MonoBehaviour
     private readonly int _sliceMaxDensityID = Shader.PropertyToID("_MaxDensityValue");
     
     # region Unity Callback Functions
-
+    
     private void Awake()
     {
         // Binding the compute shader
@@ -52,6 +53,11 @@ public class RayMarchedFluid : MonoBehaviour
         
         // Assigning the density map to the material
         sliceMaterial.SetTexture(_densityMapSliceID, densityMap);
+    }
+
+    private void OnRenderImage(RenderTexture source, RenderTexture destination)
+    {
+        Debug.Log("Test!");
     }
 
     private void Update()
