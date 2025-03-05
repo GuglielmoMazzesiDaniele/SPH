@@ -14,21 +14,43 @@ Shader "Hidden/Vignette"
         Pass
         {
             HLSLPROGRAM
-            #pragma vertex Vert
+            #pragma vertex vert
             #pragma fragment frag
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.core/Runtime/Utilities/Blit.hlsl"
             
-            // The resulting render of the camera up until this pass
-            TEXTURE2D(_MainTex);
-            float4 _MainTex_ST;
-            // Sampler for the render
-            SAMPLER(sampler_MainTex);
-
             // Variables obtained from properties
             float _Intensity;
             float _Smoothness;
+
+            struct CustomAttributes
+            {
+                uint vertexID : SV_VertexID;
+                UNITY_VERTEX_INPUT_INSTANCE_ID
+            };
+
+            struct CustomVaryings
+            {
+                float4 positionCS : SV_POSITION;
+                float2 texcoord   : TEXCOORD0;
+                UNITY_VERTEX_OUTPUT_STEREO
+            };
+
+            Varyings vert (CustomAttributes input)
+            {
+                Varyings output;
+                UNITY_SETUP_INSTANCE_ID(input);
+                UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(output);
+
+                float4 pos = GetFullScreenTriangleVertexPosition(input.vertexID);
+                float2 uv  = float2((input.vertexID << 1) & 2, 1.0 - (input.vertexID & 2));
+
+                output.positionCS = pos;
+                output.texcoord   = DYNAMIC_SCALING_APPLY_SCALEBIAS(uv);
+
+                return output;
+            }
 
             // Fragment Shader
             float4 frag(Varyings fragment) : SV_Target
@@ -42,12 +64,9 @@ Shader "Hidden/Vignette"
                 float vignette = smoothstep(1.0, _Smoothness, dist);
                 
                 // Apply vignette effect
-                color *= vignette;
-                
-                return float4(color, 1.0);
+                return float4(color * vignette, 1);
             }
-
-
+            
             ENDHLSL
         }
     }

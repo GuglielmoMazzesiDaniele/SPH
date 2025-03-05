@@ -10,15 +10,13 @@ public class RayMarchedFluid : MonoBehaviour
     [SerializeField] public Material sliceMaterial;
     [SerializeField] [Range(0.0f, 1.0f)] public float sliceDepth;
     [SerializeField] public Vector2 depictedDensityRange;
+
+    [Header("Ray Marching Fluid")] 
+    [SerializeField] public Material rayMarchingMaterial;
+    [SerializeField] public float stepSize;
     
     // Density map
     [HideInInspector] public RenderTexture densityMap;
-    
-    // Ray Marching Compute Shader
-    private ComputeShader _rayMarchingComputeShader;
-    
-    // Compute Shader's variable IDs
-    private readonly int _densityMapID = Shader.PropertyToID("density_map");
     
     // Slice density shader's variables IDs
     private readonly int _densityMapSliceID = Shader.PropertyToID("_DensityMap");
@@ -30,9 +28,6 @@ public class RayMarchedFluid : MonoBehaviour
     
     private void Awake()
     {
-        // Binding the compute shader
-        _rayMarchingComputeShader = Resources.Load<ComputeShader>("RayMarching");
-        
         // Initializing the density map
         densityMap = new RenderTexture(size.x, size.y, 0, RenderTextureFormat.RFloat)
         {
@@ -55,11 +50,6 @@ public class RayMarchedFluid : MonoBehaviour
         sliceMaterial.SetTexture(_densityMapSliceID, densityMap);
     }
 
-    private void OnRenderImage(RenderTexture source, RenderTexture destination)
-    {
-        Debug.Log("Test!");
-    }
-
     private void Update()
     {
         UpdateDensitySliceVariables();
@@ -76,6 +66,12 @@ public class RayMarchedFluid : MonoBehaviour
         // Setting the range of densities to depict
         sliceMaterial.SetFloat(_sliceMinDensityID, depictedDensityRange.x);
         sliceMaterial.SetFloat(_sliceMaxDensityID, depictedDensityRange.y);
+    }
+    
+    private void UpdateRayMarchingVariables()
+    {
+        // Assigning the density map
+        sliceMaterial.SetTexture(_densityMapSliceID, densityMap);
     }
 
     #endregion

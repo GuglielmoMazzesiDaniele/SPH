@@ -11,6 +11,8 @@ public class CustomVignetteRendererFeature : ScriptableRendererFeature
 {
     public RenderPassEvent injectionPoint = RenderPassEvent.AfterRenderingPostProcessing;
     public Material material;
+    [Range(0.0f, 1.0f)] public float intensity;
+    [Range(0.0f, 1.0f)] public float smoothness;  
     
     private CustomVignetteRenderPass _customVignetteRenderPass;
 
@@ -37,21 +39,30 @@ public class CustomVignetteRendererFeature : ScriptableRendererFeature
         }
         
         // Setting the pass material
-        _customVignetteRenderPass.Setup(material);
+        _customVignetteRenderPass.Setup(material, intensity, smoothness);
         
         // Injecting the pass in the rendering pipeline
         renderer.EnqueuePass(_customVignetteRenderPass);
     }
     
-    public class CustomVignetteRenderPass : ScriptableRenderPass
+    private class CustomVignetteRenderPass : ScriptableRenderPass
     {
+        // Pass related fields
         private const string PassName = "Custom Vignette";
         private Material _material;
         
-        public void Setup(Material material)
+        // Shader relates fields
+        private readonly int _intensityID = Shader.PropertyToID("_Intensity");
+        private readonly int _smoothnessID = Shader.PropertyToID("_Smoothness");
+        
+        public void Setup(Material material, float intensity, float smoothness)
         {
             // Setting the material
             _material = material;
+            
+            // Setting the material's variables
+            _material.SetFloat(_intensityID, intensity);
+            _material.SetFloat(_smoothnessID, smoothness);
 
             // The pass requires a temporary texture
             requiresIntermediateTexture = true;
