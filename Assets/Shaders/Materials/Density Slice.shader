@@ -30,7 +30,7 @@ Shader "Custom/Density Slice"
                 float2 uv : TEXCOORD0;
             };
 
-            struct v2f
+            struct Varyings
             {
                 float4 position : SV_POSITION;
                 float2 uv : TEXCOORD0;
@@ -43,16 +43,16 @@ Shader "Custom/Density Slice"
             float _MaxDensityValue;
 
             // Vertex Shader
-            v2f vert (appdata_t v)
+            Varyings vert (appdata_t v)
             {
-                v2f output;
+                Varyings output;
                 output.position = UnityObjectToClipPos(v.vertex);
                 output.uv = v.uv;
                 return output;
             }
 
             // Fragment Shader (Extracting the Slice)
-            fixed4 frag (v2f i) : SV_Target
+            fixed4 frag (Varyings i) : SV_Target
             {
                 // Converting UV coordinates to UVW using the provided depth
                 float3 uvw = float3(i.uv, _SliceDepth);
