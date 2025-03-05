@@ -14,7 +14,7 @@ public class RayMarchedFluid : MonoBehaviour
 
     [Header("Ray Marching Fluid")] 
     [SerializeField] public Material rayMarchingMaterial;
-    [SerializeField] public float stepSize;
+    [SerializeField] public int stepsAmount;
     [SerializeField] public float densityMultiplier;
     
     // Density map
@@ -27,8 +27,9 @@ public class RayMarchedFluid : MonoBehaviour
     private readonly int _sliceMaxDensityID = Shader.PropertyToID("_MaxDensityValue");
     
     // Ray Marching fluid shader's variables IDs
-    private readonly int _stepSizeID = Shader.PropertyToID("_StepSize");
+    private readonly int _stepsAmountID = Shader.PropertyToID("_StepsAmount");
     private readonly int _densityMultiplierID = Shader.PropertyToID("_DensityMultiplier");
+    private readonly int _stepSizeID = Shader.PropertyToID("step_size");
     
     # region Unity Callback Functions
     
@@ -84,8 +85,9 @@ public class RayMarchedFluid : MonoBehaviour
         rayMarchingMaterial.SetTexture(_densityMapSliceID, densityMap);
         
         // Setting the step size
-        rayMarchingMaterial.SetFloat(_stepSizeID, stepSize);
+        rayMarchingMaterial.SetInt(_stepsAmountID, stepsAmount);
         rayMarchingMaterial.SetFloat(_densityMultiplierID, densityMultiplier);
+        rayMarchingMaterial.SetFloat(_stepSizeID, 1.0f / stepsAmount);
         
         // Setting the range of densities to depict
         rayMarchingMaterial.SetFloat(_sliceMinDensityID, depictedDensityRange.x);

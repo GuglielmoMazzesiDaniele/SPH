@@ -117,9 +117,9 @@ Material:
     - _GlossMapScale: 0
     - _Glossiness: 0
     - _GlossyReflections: 0
-    - _MaxDensityValue: 1000
+    - _MaxDensityValue: 1.5
     - _Metallic: 0
-    - _MinDensityValue: 150
+    - _MinDensityValue: 0.00001
     - _OcclusionStrength: 1
     - _Parallax: 0.005
     - _QueueOffset: 0

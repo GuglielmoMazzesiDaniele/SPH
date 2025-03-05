@@ -5,13 +5,9 @@ Shader "Custom/Ray Marching Fluid"
         // Density map input, provided by the fluid simulation
         _DensityMap ("Density Map", 3D) = "" {}
         // The ray marching step size
-        _StepSize ("Step Size", Float) = 0.01
+        _StepsAmount ("Steps Amount", Int) = 128
         // The cumulative alpha of the marching algorithm
         _DensityMultiplier ("Marching Alpha", Float) = 1.0
-        // The minimum density value to depict
-        _MinDensityValue ("Minumum Density Value", Float) = 150.0
-        // The maximum density value to depict
-        _MaxDensityValue ("Maximum Density Value", Float) = 1000.0
     }
     SubShader
     {
@@ -29,7 +25,7 @@ Shader "Custom/Ray Marching Fluid"
             #include "UnityCG.cginc"
             
             // Maximum number of raymarching samples
-            #define MAX_STEP_COUNT 128
+            #define MAX_STEP_COUNT 500
 
             // Allowed floating point inaccuracy
             #define EPSILON 1e-5
@@ -43,13 +39,14 @@ Shader "Custom/Ray Marching Fluid"
                 float3 ray_directionOS : TEXCOORD2;
             };
 
-            // Texture and Uniforms
+            // Proprties
             sampler3D _DensityMap;
-            float _StepSize;
+            int _StepsAmount;
             float _DensityMultiplier;
-            float _MinDensityValue;
-            float _MaxDensityValue;
 
+            // Variables
+            float step_size;
+            
             // Vertex Shader
             v2f vert (appdata_base input)
             {
@@ -80,23 +77,21 @@ Shader "Custom/Ray Marching Fluid"
                 return output;
             }
 
-            float4 BlendUnder(float4 color, float4 newColor)
-            {
-                color.rgb += (1.0 - color.a) * newColor.a * newColor.rgb;
-                color.a += (1.0 - color.a) * newColor.a;
-                return color;
-            }
-
+            // Fragment shader
             float4 frag(v2f input): SV_Target
             {
                 // Initializing the color
-                float3 total_density = 0;
+                float total_density = 0;
+                float3 total_radiance = 0;
+
+                // Initializing the distance travelled within the simulation boundaries
+                
 
                 // Raymarching through object space
-                for(int i = 0; i < MAX_STEP_COUNT; i++)
+                for(int i = 0; i < min(_StepsAmount, MAX_STEP_COUNT); i++)
                 {
                     // Computing the current position
-                    float3 current_position = input.positionOS + _StepSize * i * input.ray_directionOS;
+                    float3 current_position = input.positionOS + step_size * i * input.ray_directionOS;
                     
                     // If the current position left the cube boundaries, break
                     if(max(abs(current_position.x), max(abs(current_position.y), abs(current_position.z)))
@@ -104,11 +99,22 @@ Shader "Custom/Ray Marching Fluid"
                         break;
 
                     // Sampling the texture at the current position mapped to UV range [0,1]
-                    total_density += tex3D(_DensityMap, current_position + float3(0.5f, 0.5f, 0.5f)).x
-                        * _StepSize * _DensityMultiplier;
+                    float sampled_density = tex3D(_DensityMap, current_position + 0.5).x
+                        * step_size * _DensityMultiplier;
+
+                    // Adding the sampled density to the total density
+                    total_density += sampled_density;
+
+                    // Computed an approximation of the scattered light towards the camera
+                    float3 scattered_light = float3(1, 1, 1) * sampled_density;
+
+                    // Computing the radiance reaching the camera using the accumulated density
+                    float3 current_radiance = exp(-total_density);
+
+                    total_radiance += scattered_light * current_radiance;
                 }
  
-                return float4(total_density, 1.0f);
+                return float4(total_radiance, 1.0f);
             }
         
         ENDCG
