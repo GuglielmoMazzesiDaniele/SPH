@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.Serialization;
 
 public class RayMarchedFluid : MonoBehaviour
 {
@@ -14,6 +15,7 @@ public class RayMarchedFluid : MonoBehaviour
     [Header("Ray Marching Fluid")] 
     [SerializeField] public Material rayMarchingMaterial;
     [SerializeField] public float stepSize;
+    [SerializeField] public float densityMultiplier;
     
     // Density map
     [HideInInspector] public RenderTexture densityMap;
@@ -23,6 +25,10 @@ public class RayMarchedFluid : MonoBehaviour
     private readonly int _sliceDepthID = Shader.PropertyToID("_SliceDepth");
     private readonly int _sliceMinDensityID = Shader.PropertyToID("_MinDensityValue");
     private readonly int _sliceMaxDensityID = Shader.PropertyToID("_MaxDensityValue");
+    
+    // Ray Marching fluid shader's variables IDs
+    private readonly int _stepSizeID = Shader.PropertyToID("_StepSize");
+    private readonly int _densityMultiplierID = Shader.PropertyToID("_DensityMultiplier");
     
     # region Unity Callback Functions
     
@@ -52,7 +58,11 @@ public class RayMarchedFluid : MonoBehaviour
 
     private void Update()
     {
+        // Updating the density slice variables
         UpdateDensitySliceVariables();
+        
+        // Updating the ray marching fluid variable
+        UpdateRayMarchingVariables();
     }
 
     /// <summary>
@@ -71,7 +81,15 @@ public class RayMarchedFluid : MonoBehaviour
     private void UpdateRayMarchingVariables()
     {
         // Assigning the density map
-        sliceMaterial.SetTexture(_densityMapSliceID, densityMap);
+        rayMarchingMaterial.SetTexture(_densityMapSliceID, densityMap);
+        
+        // Setting the step size
+        rayMarchingMaterial.SetFloat(_stepSizeID, stepSize);
+        rayMarchingMaterial.SetFloat(_densityMultiplierID, densityMultiplier);
+        
+        // Setting the range of densities to depict
+        rayMarchingMaterial.SetFloat(_sliceMinDensityID, depictedDensityRange.x);
+        rayMarchingMaterial.SetFloat(_sliceMaxDensityID, depictedDensityRange.y);
     }
 
     #endregion

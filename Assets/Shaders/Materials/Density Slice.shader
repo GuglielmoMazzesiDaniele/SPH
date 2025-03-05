@@ -13,7 +13,7 @@ Shader "Custom/Density Slice"
     }
     SubShader
     {
-        Tags { "Queue" = "Overlay" "RenderType"="Opaque" }
+        Tags { "RenderType"="Opaque" }
 
         Pass
         {
