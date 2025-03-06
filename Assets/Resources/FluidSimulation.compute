@@ -8,7 +8,7 @@
 #pragma kernel update_density_map
 
 // CONSTANTS
-static const int thread_group_size = 256;
+static const int thread_group_size = 512;
 
 // GPU RELATED DATA
 

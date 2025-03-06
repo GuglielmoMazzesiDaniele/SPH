@@ -205,13 +205,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.095845714, y: 0, z: 0, w: 0.99539626}
-  m_LocalPosition: {x: 17.78, y: 15.6, z: -40}
+  m_LocalRotation: {x: 0.18909544, y: 0, z: 0, w: 0.98195875}
+  m_LocalPosition: {x: 19.25, y: 9.5, z: -20.8}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 11, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 21.8, y: 0, z: 0}
 --- !u!114 &330585547
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -422,8 +422,8 @@ Transform:
   m_GameObject: {fileID: 1271518543}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 32, y: 0, z: 0}
-  m_LocalScale: {x: 20, y: 5, z: 7.5}
+  m_LocalPosition: {x: 19.33, y: 0, z: 0}
+  m_LocalScale: {x: 20, y: 10, z: 10}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -462,8 +462,8 @@ MonoBehaviour:
   particleRadius: 0.06
   particleMass: 1
   collisionDamping: 0.95
-  kernelRadius: 0.2
-  boundsSize: {x: 20, y: 5, z: 7.5}
+  kernelRadius: 0.18
+  boundsSize: {x: 15, y: 10, z: 10}
   gravity: 10
   restDensity: 650
   stiffness: 200
@@ -501,7 +501,7 @@ MonoBehaviour:
     m_NumColorKeys: 3
     m_NumAlphaKeys: 2
   speedGradientTextureWidth: 256
-  renderSimulation: 1
+  renderSimulation: 0
 --- !u!4 &1558477423
 Transform:
   m_ObjectHideFlags: 0
@@ -530,10 +530,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnRegions:
-  - particlesAmount: 250000
-    position: {x: 7.5, y: 0, z: 0}
+  - particlesAmount: 150000
+    position: {x: -4, y: -2.5, z: 0}
     size: {x: 5, y: 5, z: 7.5}
     boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}
+  - particlesAmount: 150000
+    position: {x: 4, y: -2.5, z: 0}
+    size: {x: 5, y: 5, z: 7.5}
+    boundariesColor: {r: 0.65882355, g: 0.18679135, b: 0.12941174, a: 1}
 --- !u!114 &1558477425
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -551,9 +555,9 @@ MonoBehaviour:
   sliceDepth: 0.5
   depictedDensityRange: {x: 0.00001, y: 1.5}
   rayMarchingMaterial: {fileID: 2100000, guid: 2b6dcb4f69d53bf41a233eda545db18b, type: 2}
-  stepsAmount: 300
-  densityMultiplier: 3
-  scatteringCoefficients: {x: 0.25, y: 1, z: 2.5}
+  stepsAmount: 150
+  densityMultiplier: 15
+  scatteringCoefficients: {x: 1, y: 0.2, z: 0.25}
   densityMap: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

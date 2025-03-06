@@ -445,35 +445,38 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetFloat(_deltaTimeID, stepDeltaTime);
         _simulationComputeShader.SetVector(_gravityAccelerationID, stepDeltaTime * gravity * new Vector3(0, -1, 0));
         
+        // Declaring the const amount of threads for linear scan
+        const float linear_threads_amount = 512.0f;
+        
         // Running multiple simulation steps 
         for (var i = 0; i < simulationSubSteps; i++)
         {
             // Dispatching the predicted position kernel
             _simulationComputeShader.Dispatch(_predictedPositionKernelID, 
-                Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
+                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
             
             // Dispatching the spatial keys kernel
             _simulationComputeShader.Dispatch(_spatialKeysKernelID, 
-                Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
+                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
             
             // Updating the spatial data
             _spatialGrid.Update();
     
             // Dispatching the reorder kernel
             _simulationComputeShader.Dispatch(_reorderKernelID, 
-                Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
+                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
 
             // Dispatching the copy auxiliary in main kernel
             _simulationComputeShader.Dispatch(_copyAuxiliaryInMainKernelID, 
-                Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
+                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
             
             // Dispatching the density kernel
             _simulationComputeShader.Dispatch(_densityKernelID, 
-                Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
+                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
             
             // Dispatching the delta velocities kernel
             _simulationComputeShader.Dispatch(_positionAndVelocityKernelID,
-                Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
+                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
         }
 
         // Updating the density map
