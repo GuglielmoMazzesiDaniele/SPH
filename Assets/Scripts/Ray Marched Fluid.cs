@@ -49,7 +49,7 @@ public class RayMarchedFluid : MonoBehaviour
             // Setting the texture filter
             filterMode = FilterMode.Bilinear,
             // Setting the wrap mode
-            wrapMode = TextureWrapMode.Clamp
+            wrapMode = TextureWrapMode.Repeat
         };
         
         // Creating the density map

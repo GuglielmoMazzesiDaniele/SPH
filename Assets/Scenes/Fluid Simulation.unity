@@ -337,7 +337,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 12, y: 10, z: 0}
-  m_LocalScale: {x: 20, y: 7.5, z: 1}
+  m_LocalScale: {x: 15, y: 7.5, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -423,7 +423,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 22, y: 0, z: 0}
-  m_LocalScale: {x: 20, y: 7.5, z: 10}
+  m_LocalScale: {x: 15, y: 7.5, z: 10}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -463,7 +463,7 @@ MonoBehaviour:
   particleMass: 1.25
   collisionDamping: 0.95
   kernelRadius: 0.2
-  boundsSize: {x: 20, y: 7.5, z: 10}
+  boundsSize: {x: 15, y: 7.5, z: 10}
   gravity: 10
   restDensity: 650
   stiffness: 200
@@ -530,7 +530,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnRegions:
-  - particlesAmount: 225000
+  - particlesAmount: 200000
     position: {x: 0, y: 0, z: 0}
     size: {x: 8, y: 6, z: 8}
     boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}
@@ -546,7 +546,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 20ec0af106e5c7141a790c37e55932f5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  size: {x: 80, y: 80, z: 80}
+  size: {x: 64, y: 64, z: 64}
   sliceMaterial: {fileID: 2100000, guid: 99f7c6720421a8f4487e3a6b83639027, type: 2}
   sliceDepth: 0.5
   depictedDensityRange: {x: 0.00001, y: 1.5}
