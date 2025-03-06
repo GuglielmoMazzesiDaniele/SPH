@@ -206,7 +206,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0.095845714, y: 0, z: 0, w: 0.99539626}
-  m_LocalPosition: {x: 12, y: 11, z: -30}
+  m_LocalPosition: {x: 17.78, y: 15.6, z: -40}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -273,7 +273,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!23 &371963064
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -336,8 +336,8 @@ Transform:
   m_GameObject: {fileID: 371963063}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 12, y: 10, z: 0}
-  m_LocalScale: {x: 15, y: 7.5, z: 1}
+  m_LocalPosition: {x: 18, y: 20, z: 0}
+  m_LocalScale: {x: 30, y: 15, z: 15}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -422,8 +422,8 @@ Transform:
   m_GameObject: {fileID: 1271518543}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 22, y: 0, z: 0}
-  m_LocalScale: {x: 15, y: 7.5, z: 10}
+  m_LocalPosition: {x: 32, y: 0, z: 0}
+  m_LocalScale: {x: 30, y: 15, z: 15}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -460,15 +460,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   particleRadius: 0.06
-  particleMass: 1.25
+  particleMass: 1
   collisionDamping: 0.95
   kernelRadius: 0.2
-  boundsSize: {x: 15, y: 7.5, z: 10}
+  boundsSize: {x: 30, y: 15, z: 15}
   gravity: 10
   restDensity: 650
   stiffness: 200
   viscosity: 0.01
-  simulationSubSteps: 4
+  simulationSubSteps: 3
   particleMaterial: {fileID: 2100000, guid: 8712fed4b32e58e4cb0d0285d55755b8, type: 2}
   particleSpeedGradient:
     serializedVersion: 2
@@ -530,9 +530,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnRegions:
-  - particlesAmount: 200000
+  - particlesAmount: 2000000
     position: {x: 0, y: 0, z: 0}
-    size: {x: 8, y: 6, z: 8}
+    size: {x: 10, y: 10, z: 10}
     boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}
 --- !u!114 &1558477425
 MonoBehaviour:
@@ -546,7 +546,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 20ec0af106e5c7141a790c37e55932f5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  size: {x: 64, y: 64, z: 64}
+  size: {x: 128, y: 128, z: 128}
   sliceMaterial: {fileID: 2100000, guid: 99f7c6720421a8f4487e3a6b83639027, type: 2}
   sliceDepth: 0.5
   depictedDensityRange: {x: 0.00001, y: 1.5}

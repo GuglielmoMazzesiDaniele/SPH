@@ -87,6 +87,11 @@ float poly6_normalization;
 float spiky_gradient_first_term;
 float viscosity_laplacian_first_term;
 
+// Constants used for hashing
+static const uint hash_k1 = 15823;
+static const uint hash_k2 = 9737333;
+static const uint hash_k3 = 440817757;
+
 // Ray-marching related fields
 const int3 density_map_size;
 
@@ -178,26 +183,20 @@ uint are_int3_equal(int3 first, int3 second)
     return all(first == second);
 }
 
-// MurmurHash3-Like 3D Hash
-uint murmur(uint h)
-{
-    h ^= h >> 16;
-    h *= 0x85ebca6b;
-    h ^= h >> 13;
-    h *= 0xc2b2ae35;
-    h ^= h >> 16;
-    return h;
-}
-
 // Given a cell position in the spatial grid, returns its corresponding hash value mod particles_amount
 uint hash_cell(int3 cell_coords)
 {
-    uint seed = 42; // You can change the seed
-    uint hash = seed;
-    hash ^= murmur(cell_coords.x);
-    hash ^= murmur(cell_coords.y);
-    hash ^= murmur(cell_coords.z);
-    return hash % particles_amount;
+    // Mapping the cell coordinates to a block
+    const uint block_size = 50;
+    uint3 cell_coords_uint = (cell_coords + block_size / 2);
+
+    // Computing the variables relative to the block
+    uint3 local_cell = cell_coords_uint % block_size;
+    uint3 block_id = cell_coords_uint / block_size;
+    uint block_hash = block_id.x * hash_k1 + block_id.y * hash_k2 + block_id.z * hash_k3;
+
+    // Computing the hash value of the cell coordinates mod particles_amount
+    return (local_cell.x + block_size * (local_cell.y + block_size * local_cell.z) + block_hash) % particles_amount;
 }
 
 // Given a position in world space, returns the density at the position

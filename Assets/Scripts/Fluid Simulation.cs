@@ -35,12 +35,6 @@ public class FluidSimulation : MonoBehaviour
     
     #region CPU Related Fields
     
-    private struct SpatialEntry
-    {
-        public int ParticleIndex;
-        public int CellKey;
-    }
-    
     // Reference to the simulation compute shader
     private ComputeShader _simulationComputeShader;
     
@@ -63,51 +57,11 @@ public class FluidSimulation : MonoBehaviour
     // Bounds related fields
     private Vector3 _halfBoundsSize;
     
-    // Simulation related fields
-    private Vector3 _gravityAcceleration;
-    
     // Kernel related fields
     private float _sqrKernelRadius;
     private float _poly6Normalization;
     private float _spikyGradientNormalization;
     private float _viscosityLaplacianNormalization;
-    
-    // Optimization related fields
-    private SpatialEntry[] _spatialLookup;
-    private int[] _lookupStartIndex;
-    private List<SpatialEntry>[] _buckets;
-    
-    // Array of neighbours particles
-    private static readonly Vector3Int[] CellOffsets =
-    {
-        new (-1,  1,  1),
-        new ( 0,  1,  1),
-        new ( 1,  1,  1),
-        new (-1,  0,  1),
-        new ( 0,  0,  1),
-        new ( 1,  0,  1),
-        new (-1, -1,  1),
-        new ( 0, -1,  1),
-        new ( 1, -1,  1),
-        new (-1,  1,  0),
-        new ( 0,  1,  0),
-        new ( 1,  1,  0),
-        new (-1,  0,  0),
-        new ( 0,  0,  0),
-        new ( 1,  0,  0),
-        new (-1, -1,  0),
-        new ( 0, -1,  0),
-        new ( 1, -1,  0),
-        new (-1,  1, -1),
-        new ( 0,  1, -1),
-        new ( 1,  1, -1),
-        new (-1,  0, -1),
-        new ( 0,  0, -1),
-        new ( 1,  0, -1),
-        new (-1, -1, -1),
-        new ( 0, -1, -1),
-        new ( 1, -1, -1),
-    };
     
     // Shaders related fields
     private readonly int _halfBoundsSizeID = Shader.PropertyToID("half_bounds_size");
@@ -285,19 +239,6 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void InitializeOptimization()
     {
-        // Initializing the optimization related arrays
-        _spatialLookup = new SpatialEntry[_particlesAmount];
-        _lookupStartIndex = new int[_particlesAmount];
-        
-        // Creating the list of buckets
-        _buckets = new List<SpatialEntry>[_particlesAmount];
-        
-        // Initializing the buckets
-        for (var i = 0; i < _particlesAmount; i++)
-        {
-            _buckets[i] = new List<SpatialEntry>();
-        }
-        
         // Initializing the GPU implementation of the spatial grid
         _spatialGrid = new SpatialGrid(_particlesAmount);
     }
@@ -315,9 +256,6 @@ public class FluidSimulation : MonoBehaviour
         _predictedPositions = new Vector3[_particlesAmount];
         _velocities = new Vector3[_particlesAmount];
         _densities = new float[_particlesAmount];
-        
-        // Initializing the gravity acceleration
-        _gravityAcceleration = gravity * Vector3.down;
         
         // Setting the positions equal to the one provided by the fluid spawner
         _positions = _fluidSpawner.GetSpawnPositions();
@@ -537,20 +475,12 @@ public class FluidSimulation : MonoBehaviour
             _simulationComputeShader.Dispatch(_positionAndVelocityKernelID,
                 Mathf.CeilToInt(_particlesAmount / 256.0f), 1, 1);
         }
-        
+
         // Updating the density map
         _simulationComputeShader.Dispatch(_updateDensityMapKernelID,
             Mathf.CeilToInt(_rayMarchedFluid.size.x / 8.0f), 
             Mathf.CeilToInt(_rayMarchedFluid.size.y / 8.0f), 
             Mathf.CeilToInt(_rayMarchedFluid.size.z / 8.0f));
-
-        return;
-        
-        // Running multiple simulation steps 
-        for (var i = 0; i < simulationSubSteps; i++)
-        {
-            EulerSimulationStep(Time.fixedDeltaTime / simulationSubSteps);
-        }
     }
 
     /// <summary>
@@ -565,10 +495,6 @@ public class FluidSimulation : MonoBehaviour
         // Updating the uniform Radius on GPU
         particleMaterial.SetFloat(_particleRadiusID, particleRadius);
 
-        // Updating position buffer on GPU
-        // _positionsBuffer.SetData(_positions);
-        // _velocitiesBuffer.SetData(_velocities);
-        
         // Setting the rendering parameters
         var renderingParameters = new RenderParams(particleMaterial);
         
@@ -585,396 +511,21 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void HandleInputs()
     {
-        // Flipping whether the simulation is running on space bar pressed
+        // Pausing or starting the simulation
         if (Input.GetKeyDown(KeyCode.Space))
         {
             _isSimulationPlaying = !_isSimulationPlaying;
         }
-    }
-    
-    #endregion
-
-    #region Simulation
-    
-    /// <summary>
-    /// Execute a simulation step with the given delta time using Euler based integration.
-    /// </summary>
-    /// <param name="deltaTime">The delta time from the previous simulation step.</param>
-    private void EulerSimulationStep(float deltaTime)
-    {
-        // Computing the gravity vector
-        _gravityAcceleration = gravity * deltaTime * Vector2.down;
         
-        // Applying gravity and predict next positions
-        Parallel.For(0, _particlesAmount, currentIndex => 
+        // Resetting the simulation
+        if (Input.GetKeyDown(KeyCode.R))
         {
-            // Applying gravity to the particle velocity
-            _velocities[currentIndex] += _gravityAcceleration;
-            
-            // Predicting the next particle position
-            _predictedPositions[currentIndex] = _positions[currentIndex] + _velocities[currentIndex] * deltaTime;
-        });
-        
-        // Updating the spatial lookup array
-        UpdateSpatialLookup();
-        
-        // Calculating the density at particles position
-        Parallel.For(0, _particlesAmount, currentIndex =>
-        {
-            // Computing the density at particle position
-            CalculateDensity(currentIndex);
-        });
-
-        // Adding the current acceleration to the particle's velocity
-        Parallel.For(0, _particlesAmount, currentIndex =>
-        {
-            // Adding the acceleration to the particle velocity
-            _velocities[currentIndex] += CalculateAcceleration(currentIndex) * deltaTime;
-        });
-        
-        // Updating the particles position and resolving collision
-        Parallel.For(0, _particlesAmount, currentIndex =>
-        {
-            // Updating position
-            _positions[currentIndex] += _velocities[currentIndex] * deltaTime;
-
-            // Resolving collisions
-            ResolveCollisions(ref _positions[currentIndex], ref _velocities[currentIndex]);
-        });
-    }
-
-    #endregion
-
-    #region Spatial Lookup
-
-    /// <summary>
-    /// Updates the spatial lookup data structure based on the current particles position.
-    /// </summary>
-    private void UpdateSpatialLookup()
-    {
-        // Creating the unordered spatial lookup array
-        Parallel.For(0, _particlesAmount, currentIndex => {
-            // Mapping the particle position to a cell in the grid
-            var cellCoordinates = PositionToCellCoordinates(_predictedPositions[currentIndex]);
-            
-            // Calculating the cell key
-            var cellKey = GetKeyFromHash(HashCell(cellCoordinates));
-            
-            // Locking the corresponding bucket to insert current particle
-            lock (_buckets[cellKey])
-            {
-                _buckets[cellKey].Add(new SpatialEntry
-                {
-                    ParticleIndex = currentIndex,
-                    CellKey = cellKey
-                });
-            }
-            
-            // Initializing the start index to infinity
-            _lookupStartIndex[currentIndex] = int.MaxValue;
-        });
-        
-        // Auxiliary variable used to flatten the buckets
-        var spatialIndex = 0;
-        
-        // Flattening the buckets into a sorted array
-        for (var i = 0; i < _particlesAmount; i++)
-        {
-            // Storing the current spatial index as the first with the current spatial key
-            // Even if the bucket is empty it works because an empty bucket will never be accessed
-            _lookupStartIndex[i] = spatialIndex;
-            
-            // Pushing all the values contained in the bucket into the array, resulting in a sorted array
-            for (var j = 0; j < _buckets[i].Count; j++)
-            {
-                _spatialLookup[spatialIndex++] = _buckets[i][j];
-            }
-            
-            // Clearing current bucket
-            // TODO: Improve if more than 10000 particles
-            _buckets[i].Clear();
+            _positionsBuffer.SetData(_positions);
+            _predictedPositionsBuffer.SetData(_predictedPositions);
+            _densitiesBuffer.SetData(_densities);
+            _velocitiesBuffer.SetData(_velocities);
         }
     }
-
-    /// <summary>
-    /// Given a position in a different coordinate system (ideally world space), returns the coordinates of the cell
-    /// containing it.
-    /// </summary>
-    /// <param name="position">The 2D position to evaluate.</param>
-    /// <returns>A tuple representing the coordinates of the cell containing the given position.</returns>
-    private Vector3Int PositionToCellCoordinates(Vector3 position)
-    {
-        // Computing the coordinates with respect to the given radius
-        var x = (int) (position.x / kernelRadius);
-        var y = (int) (position.y / kernelRadius);
-        var z = (int) (position.z / kernelRadius);
-
-        return new Vector3Int(x, y, z);
-    }
-
-    /// <summary>
-    /// Given a 2D coordinate, returns their corresponding hash value.
-    /// </summary>
-    /// <param name="cellCoordinates">A tuple representing the cell coordinates.</param>
-    /// <returns>The corresponding hash value of the coordinates.</returns>
-    private int HashCell(Vector3Int cellCoordinates)
-    {
-        // Multiplying the coordinates by three arbitrary prime number
-        var a = cellCoordinates.x * 73856093;
-        var b = cellCoordinates.y * 19349663;
-        var c = cellCoordinates.z * 83492791;
-        
-        // Returning the hashed value
-        return a ^ b ^ c;
-    }
     
-    /// <summary>
-    /// Given a hash value, returns its corresponding index in the spatial lookup array.
-    /// </summary>
-    /// <param name="hash">The hash value to map.</param>
-    /// <returns>An index corresponding to the hash value.</returns>
-    private int GetKeyFromHash(int hash)
-    {
-        return Mathf.Abs(hash) % _particlesAmount;
-    }
-
-    #endregion
-    
-    #region Collision Detection
-
-    /// <summary>
-    /// Given a reference to a particle's position and velocity, check collision with the simulation boundaries.
-    /// </summary>
-    /// <param name="position">A reference to the particle's position</param>
-    /// <param name="velocity">A reference to the particle's velocity</param>
-    private void ResolveCollisions(ref Vector3 position,ref Vector3 velocity)
-    {
-        // Case in which the particle collided with the bounds on X-axis
-        if (Mathf.Abs(position.x) > _halfBoundsSize.x)
-        {
-            // Setting the position x to the maximum
-            position.x = _halfBoundsSize.x * Mathf.Sign(position.x);
-            // Flipping the velocity sign and applying a damping
-            velocity.x *= -collisionDamping;
-        }
-        
-        // Case in which the particle collided with the bounds on Y-axis
-        if (Mathf.Abs(position.y) > _halfBoundsSize.y)
-        {
-            // Setting the position y to the maximum
-            position.y = _halfBoundsSize.y * Mathf.Sign(position.y);
-            // Flipping the velocity sign and applying a damping
-            velocity.y *= -collisionDamping;
-        }
-        
-        // Case in which the particle collided with the bound on Z-Axis
-        if (Mathf.Abs(position.z) > _halfBoundsSize.z)
-        {
-            // Setting the position y to the maximum
-            position.z = _halfBoundsSize.z * Mathf.Sign(position.z);
-            // Flipping the velocity sign and applying a damping
-            velocity.z *= -collisionDamping;
-        }
-    }
-
-    #endregion
-    
-    #region Density
-    
-    /// <summary>
-    /// Calculate the density at the position of the particle corresponding to given index.
-    /// </summary>
-    /// <param name="targetParticleIndex">The index of the particle to evaluate.</param>
-    /// <returns>The density at the particle position</returns>
-    private void CalculateDensity(int targetParticleIndex)
-    {
-        // Computing the coordinates of the grid cell containing the given position
-        var cellCoordinates = PositionToCellCoordinates(_predictedPositions[targetParticleIndex]);
-        
-        // Initializing the density of the target particle
-        var density = 0.0f;
-        
-        // Looping over all the cells belonging to the 3x3 square around the particle
-        foreach (var offset in CellOffsets)
-        {
-            // Computing the key of the central cell + the current offset
-            var currentCellKey = GetKeyFromHash(HashCell(new Vector3Int(
-                cellCoordinates.x + offset.x, 
-                cellCoordinates.y + offset.y, 
-                cellCoordinates.z + offset.z)));
-            
-            // Extracting the index of the first element with current cell key
-            var startIndex = _lookupStartIndex[currentCellKey];
-
-            // Iterating all the particles belonging to the current cell
-            for (var i = startIndex; i < _particlesAmount && _spatialLookup[i].CellKey == currentCellKey; i++)
-            {
-                // Extracting a reference to the current particle
-                var currentParticleIndex = _spatialLookup[i].ParticleIndex;
-                
-                // Computing the distance between the current particle and the particle of interest
-                var sqrDistance = (_predictedPositions[currentParticleIndex] 
-                                   - _predictedPositions[targetParticleIndex]).sqrMagnitude;
-            
-                // Case in which the particle is outside the kernel radius or affecting itself
-                if(sqrDistance >= _sqrKernelRadius)
-                    continue;
-            
-                // Computing the influence of the current particle
-                var influence = Poly6(sqrDistance);
-            
-                // Adding the result to the density
-                density += particleMass * influence;
-            }
-        }
-        
-        _densities[targetParticleIndex] = density;
-    }
-
-    #endregion
-    
-    #region Pressure & Viscosity
-
-    /// <summary>
-    /// Computes the acceleration of the target particle, using the standard SPH formulation.
-    /// </summary>
-    /// <param name="targetParticleIndex"></param>
-    /// <returns></returns>
-    private Vector3 CalculateAcceleration(int targetParticleIndex)
-    {
-        // Computing the coordinates of the grid cell containing the given position
-        var cellCoordinates = PositionToCellCoordinates(_predictedPositions[targetParticleIndex]);
-
-        // Initializing the density
-        var force = Vector3.zero;
-
-        // Looping over all the cells belonging to the 3x3 square around the particle
-        foreach (var offset in CellOffsets)
-        {
-            // Computing the key of the central cell + the current offset
-            var currentCellKey = GetKeyFromHash(HashCell(new Vector3Int(
-                cellCoordinates.x + offset.x, 
-                cellCoordinates.y + offset.y, 
-                cellCoordinates.z + offset.z)));
-
-            // Extracting the index of the first element with current cell key
-            var startIndex = _lookupStartIndex[currentCellKey];
-
-            // Iterating all the particles belonging to the current cell
-            for (var i = startIndex; i < _particlesAmount && _spatialLookup[i].CellKey == currentCellKey; i++)
-            {
-                // Extracting the index of the current particles
-                var currentParticleIndex = _spatialLookup[i].ParticleIndex;
-                
-                // Skipping calculation for the particle by itself
-                if (currentParticleIndex == targetParticleIndex)
-                    continue;
-                
-                // Computing the vector from target particle to current particle
-                var targetToCurrent =  _predictedPositions[targetParticleIndex] 
-                                       - _predictedPositions[currentParticleIndex];
-                
-                // Case in which the particle is outside the kernel radius
-                if(targetToCurrent.sqrMagnitude >= _sqrKernelRadius)
-                    continue;
-                
-                // Computing the distance
-                var distance = targetToCurrent.magnitude;
-                
-                // Computing the influence of the current particle
-                var viscosityInfluence = ViscosityLaplacian(distance);
-                
-                // Computing the difference between velocities
-                var velocitiesDifference = _velocities[currentParticleIndex] - _velocities[targetParticleIndex];
-                
-                // Adding the result to the force
-                force += particleMass * viscosityInfluence * viscosity * velocitiesDifference 
-                         / _densities[currentParticleIndex];
-                
-                // Computing the direction between the current particle and the point of interest
-                var pressureDirection = distance == 0 ?
-                    new Vector3(1, 0, 0)
-                    : targetToCurrent / distance;
-            
-                // Evaluating the slope of the kernel at the given distance
-                var kernelSlope = SpikyGradient(distance);
-            
-                // Computing the shared pressure force
-                var sharedPressure = CalculateSharedPressure(_densities[currentParticleIndex],
-                    _densities[targetParticleIndex]);
-                
-                // Computing the applied force using both pressure and viscosity
-                force -= particleMass * sharedPressure * kernelSlope * pressureDirection 
-                         / _densities[currentParticleIndex];
-            }
-        }
-        
-        return force / _densities[targetParticleIndex] + _gravityAcceleration;
-    }
-    
-    /// <summary>
-    /// Convert the provided density value into pressure using SPH formula
-    /// </summary>
-    /// <param name="density">The provided density</param>
-    /// <returns></returns>
-    private float ConvertDensityToPressure(float density)
-    {
-        // Computing the pressure force using Tait equation
-        return stiffness * (Mathf.Pow(density / restDensity, 4) - 1);
-    }
-
-    /// <summary>
-    /// Auxiliary function used to compute the pressure between two particles given the density at their position.
-    /// </summary>
-    /// <param name="firstDensity">Density at the first particle's position.</param>
-    /// <param name="secondDensity">Density at the second particle's position.</param>
-    /// <returns>The pressure force between the particles.</returns>
-    private float CalculateSharedPressure(float firstDensity, float secondDensity)
-    {
-        // Converting both densities to pressure 
-        var firstPressure = ConvertDensityToPressure(firstDensity);
-        var secondPressure = ConvertDensityToPressure(secondDensity);
-
-        // Computing the pressure that respects Newton's Third Law of Motion (as explained by Sebastian Lague)
-        return (firstPressure + secondPressure) / 2;
-    }
-
-    #endregion
-
-    #region Kernels
-    
-    /// <summary>
-    /// Computes the gradient of the Spiky kernel at the given distance
-    /// </summary>
-    /// <param name="distance">The distance</param>
-    /// <returns>The gradient of the kernel at given distance.</returns>
-    private float SpikyGradient(float distance)
-    {
-        // Computing the gradient 
-        return _spikyGradientNormalization * Mathf.Pow(distance - kernelRadius, 2);
-    }
-
-    /// <summary>
-    /// Computes the influence at the given squared distance using the kernel: (radius^2 - distance^2)^3
-    /// </summary>
-    /// <param name="sqrDistance">The squared distance</param>
-    /// <returns>The influence at the given distance</returns>
-    private float Poly6(float sqrDistance)
-    {
-        // Computing the influence at given distance
-        return _poly6Normalization * Mathf.Pow(_sqrKernelRadius - sqrDistance, 3);
-    }
-    
-    /// <summary>
-    /// Computes the laplacian of the Viscosity kernel at the given distance
-    /// </summary>
-    /// <param name="distance">The distance to evaluate.</param>
-    /// <returns>The laplacian of the kernel at given distance.</returns>
-    private float ViscosityLaplacian(float distance)
-    {
-        //Computing the laplacian
-        return _viscosityLaplacianNormalization * (kernelRadius - distance);
-    }
-
     #endregion
 }
