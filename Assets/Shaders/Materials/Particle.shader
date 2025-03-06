@@ -51,7 +51,6 @@ Shader "Custom/Particle"
 
             // CPU PROVIDED DATA
             float particle_radius;
-            int is_ping_active;
 
             // GPU RELATED DATA
             StructuredBuffer<float3> positions;

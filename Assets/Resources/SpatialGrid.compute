@@ -1,0 +1,231 @@
+// KERNELS
+#pragma kernel initialize_buffers
+#pragma kernel calculate_histogram_and_reset_offsets
+#pragma kernel esp_scan
+#pragma kernel esp_combine
+#pragma kernel scatter_output
+#pragma kernel copy_sorted_into_spatial
+#pragma kernel calculate_offsets_and_reset_histogram
+
+// CONSTANTS
+
+// Amount of threads per group
+static const int thread_group_size = 256;
+// Amount of items managed by each eps algorithm's group.
+static const uint eps_items_per_group = thread_group_size * 2;
+
+// VARIABLES
+
+// Core buffers, used by the simulation to execute neighbours each.
+RWStructuredBuffer<uint> spatial_keys;
+RWStructuredBuffer<uint> spatial_indices;
+RWStructuredBuffer<uint> spatial_offsets;
+
+// Auxiliary buffers, used by the sorting algorithm
+RWStructuredBuffer<uint> sorted_keys;
+RWStructuredBuffer<uint> sorted_indices;
+
+// Core buffer of the algorithm.
+// At the beginning of the sorting process it contains the histogram of the spatial grid hashed keys
+// distribution within the simulation.
+// The simulation is in charge of filling the distribution before calling the sorting algorithm.
+// To the buffer is then applied an exclusive prefix sum parallel algorithm. This effectively results in knowing the
+// initial array within the global array of each histogram's bin. This information is the used to compute the offsets
+// per key and to scatter the original data into a sorted buffer.
+RWStructuredBuffer<uint> keys_histogram;
+
+// Auxiliary buffers, used by the eps (exclusive prefix sum) algorithm. 
+RWStructuredBuffer<uint> esp_target;
+RWStructuredBuffer<uint> esp_groups_sums;
+// Initializing shared memory used by each group executing the eps algorithm.
+// Improves efficiency and reduce latency due to absence of main memory access.
+groupshared uint esp_shared_memory[eps_items_per_group];
+// Size of the current target buffer on which the eps algorithm is running. Changed dynamically by CPU.
+uint esp_target_size;
+
+// Variables provided by the CPU
+int particles_amount;
+
+[numthreads(thread_group_size, 1, 1)]
+void initialize_buffers(uint id : SV_DispatchThreadID)
+{
+    // Resetting only valid thread ids
+    if(id >= particles_amount)
+        return;
+
+    // Initializing the bins of the histogram
+    keys_histogram[id] = 0;
+    // Assigning the maximum offset so that if during simulation a false key is accessed, then automatically exit the
+    // loop
+    spatial_offsets[id] = particles_amount;
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void calculate_histogram_and_reset_offsets(uint id : SV_DispatchThreadID)
+{
+    // Calculating using only valid thread ids
+    if(id >= particles_amount)
+        return;
+
+    // Resetting the offset of the current key by the maximum value so that if during simulation a false key is
+    // accessed, is immediately invalid
+    spatial_offsets[id] = particles_amount;
+    
+    // Obtaining the key of the current thread from the spatial keys buffer
+    uint key = spatial_keys[id];
+
+    // Increasing the corresponding bin within the histogram by one
+    InterlockedAdd(keys_histogram[key], 1);
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void esp_scan(uint global_thread_id : SV_DispatchThreadID,
+    uint local_thread_id : SV_GroupThreadID, uint group_id : SV_GroupID)
+{
+    // Computing the indices of local target of the thread
+    uint first_local_index = local_thread_id * 2 + 0;
+    uint second_local_index = local_thread_id * 2 + 1;
+    
+    // Computing the indices of the global target of the thread
+    uint first_global_index = global_thread_id * 2 + 0;
+    uint second_global_index = global_thread_id * 2 + 1;
+
+    // Verifying that the computed global indices are valid
+    bool is_first_valid  = first_global_index  < esp_target_size;
+    bool is_second_valid = second_global_index < esp_target_size;
+    
+    // Moving data from global buffer to groupshared data
+    esp_shared_memory[first_local_index] = is_first_valid ? esp_target[first_global_index] : 0;
+    esp_shared_memory[second_local_index] = is_second_valid ? esp_target[second_global_index] : 0;
+
+    // Initializing up sweep auxiliary variables
+    uint offset = 1;
+
+    // Executing the up sweep to compute the temp memory total sum
+    for(uint active_threads_amount = thread_group_size; active_threads_amount > 0; active_threads_amount /= 2)
+    {
+        // Synchronizing all threads withing a group to avoid race conditions
+        GroupMemoryBarrierWithGroupSync();
+
+        // Computing the current iteration up sweep sum only on threads that are still active
+        if(local_thread_id < active_threads_amount)
+        {
+            // Computing the current targets of the thread using the current offset
+            uint index_a = offset * (first_local_index  + 1) - 1;
+            uint index_b = offset * (second_local_index + 1) - 1;
+            // Calculating up sweep of the targets
+            esp_shared_memory[index_b] = esp_shared_memory[index_a] + esp_shared_memory[index_b];
+        }
+
+        // Doubling the current offset
+        offset *= 2;
+    }
+    
+    // Since thread with local id is unique and the only one still active at this point in the reduction, this step can
+    // be done without synchronization
+    if (local_thread_id == 0)
+    {
+        // Storing the total count of the group in the group buffer,
+        // so that individual group scans can later be easily combined
+        esp_groups_sums[group_id] = esp_shared_memory[eps_items_per_group - 1];
+        // Setting the total count stored at the end of the temporary memory since the algorithm is exclusive
+        esp_shared_memory[eps_items_per_group - 1] = 0;
+    }
+
+    // Executing the up sweep to compute the output of the esp algorithm
+    for(uint active_threads_amount = 1; active_threads_amount <= thread_group_size; active_threads_amount *= 2)
+    {
+        // Synchronizing all threads withing a group to avoid race conditions
+        GroupMemoryBarrierWithGroupSync();
+
+        offset /= 2;
+
+        // Computing the current iteration down sweep only on threads that are still active
+        if(local_thread_id < active_threads_amount)
+        {
+            // Computing the current targets of the thread using the current offset
+            uint index_a = offset * (first_local_index  + 1) - 1;
+            uint index_b = offset * (second_local_index + 1) - 1;
+            // Computing the down sweep sum of the two targets
+            uint sum = esp_shared_memory[index_a] + esp_shared_memory[index_b];
+            // Assigning the new down sweep values to the targets
+            esp_shared_memory[index_a] = esp_shared_memory[index_b];
+            esp_shared_memory[index_b] = sum;
+        }
+    }
+
+    // Synchronizing all threads withing a group to avoid race conditions
+    GroupMemoryBarrierWithGroupSync();
+
+    // Storing the result of the group esp into global buffer
+    if (is_first_valid)  esp_target[first_global_index]  = esp_shared_memory[first_local_index];
+    if (is_second_valid) esp_target[second_global_index] = esp_shared_memory[second_local_index];
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void esp_combine(uint global_thread_id : SV_DispatchThreadID, uint group_id : SV_GroupID)
+{
+    // Computing the global indices of the current thread
+    uint first_global_index  = global_thread_id * 2 + 0;
+    uint second_global_index = global_thread_id * 2 + 1;
+
+    // Propagating the prefix sum of previous groups if the global indices are valid
+    if(first_global_index  < esp_target_size) esp_target[first_global_index]  += esp_groups_sums[group_id];
+    if(second_global_index < esp_target_size) esp_target[second_global_index] += esp_groups_sums[group_id];
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void scatter_output(uint id : SV_DispatchThreadID)
+{
+    // Scattering using only valid ids
+    if(id >= particles_amount)
+        return;
+
+    // Extracting the spatial key corresponding to the thread
+    uint cell_key = spatial_keys[id];
+
+    // Obtaining a valid index into the sorted output
+    uint sorted_index;
+    InterlockedAdd(keys_histogram[cell_key], 1, sorted_index);
+
+    // Storing in the sorted output the input values corresponding to the thread id
+    sorted_keys[sorted_index] = cell_key;
+    sorted_indices[sorted_index] = id;
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void copy_sorted_into_spatial(uint id : SV_DispatchThreadID)
+{
+    // Copying using only valid ids
+    if(id >= particles_amount)
+        return;
+
+    spatial_keys[id] = sorted_keys[id];
+    spatial_indices[id] = sorted_indices[id];
+}
+
+[numthreads(thread_group_size, 1, 1)]
+void calculate_offsets_and_reset_histogram(uint id : SV_DispatchThreadID)
+{
+    // Calculating using only valid ids
+    if(id >= particles_amount)
+        return;
+
+    // Resetting the bins of the histogram
+    keys_histogram[id] = 0;
+
+    // Special case: spatial_keys[0] always map to 0
+    if(id == 0)
+    {
+        spatial_offsets[spatial_keys[id]] = id;
+        return;
+    }
+
+    // Extracting the keys of this thread and the previous global one
+    uint key = spatial_keys[id];
+    uint previous_key = spatial_keys[id - 1];
+    
+    // If the current thread is different from the previous one, then the current thread is an offset
+    if(key != previous_key)
+        spatial_offsets[key] = id;
+}

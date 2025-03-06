@@ -1,0 +1,90 @@
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
+using UnityEngine.Rendering.RenderGraphModule;
+using UnityEngine.Rendering.RenderGraphModule.Util;
+
+public class RayMarchingRenderFeature : ScriptableRendererFeature
+{
+    public Material material;
+    
+    private RayMarchingRenderPass _rayMarchingRenderPass;
+
+    /// <inheritdoc/>
+    public override void Create()
+    {
+        _rayMarchingRenderPass = new RayMarchingRenderPass
+        {
+            // Configures where the render pass should be injected.
+            renderPassEvent = RenderPassEvent.AfterRenderingPostProcessing
+        };
+    }
+
+    // Here you can inject one or multiple render passes in the renderer.
+    // This method is called when setting up the renderer once per-camera.
+    public override void AddRenderPasses(ScriptableRenderer renderer, ref RenderingData renderingData)
+    {
+        // If the material is not set, return
+        if (material == null)
+        {
+            Debug.LogError("Material must be set in the Material Based Post Processing Feature.");
+            return;
+        }
+        
+        // Setting the pass material
+        _rayMarchingRenderPass.Setup(material);
+        
+        // Injecting the pass in the rendering pipeline
+        renderer.EnqueuePass(_rayMarchingRenderPass);
+    }
+    
+    private class RayMarchingRenderPass : ScriptableRenderPass
+    {
+        // Pass related fields
+        private const string PassName = "Ray Marching Fluid Pass";
+        private Material _material;
+
+        public void Setup(Material material)
+        {
+            // Setting the material
+            _material = material;
+            
+            // The pass requires a temporary texture
+            requiresIntermediateTexture = true;
+        }
+
+        // RecordRenderGraph is where the RenderGraph handle can be accessed, through which render passes can be added to the graph.
+        // FrameData is a context container through which URP resources can be accessed and managed.
+        public override void RecordRenderGraph(RenderGraph renderGraph, ContextContainer frameData)
+        {
+            // Extracting the resource data from the current stage of the pipeline
+            var resourceData = frameData.Get<UniversalResourceData>();
+            
+            // Verifying if that current pass is writing directly to the screen back buffer
+            if(resourceData.isActiveTargetBackBuffer)
+                Debug.LogError($"Skipping render pass {PassName}, it requires an intermediate ColorTexture");
+            
+            // Extracting the current color texture
+            var source = resourceData.activeColorTexture;
+            
+            // Extracting the texture description
+            var destinationDescription = renderGraph.GetTextureDesc(source);
+            
+            // Fine-tuning the description
+            destinationDescription.name = $"CameraColor-{PassName}";
+            destinationDescription.clearBuffer = false;
+            
+            // Creating the destination texture
+            var destination = renderGraph.CreateTexture(destinationDescription);
+            
+            // Initializing the parameters for the blit
+            RenderGraphUtils.BlitMaterialParameters blitMaterialParameters = new (source, destination, _material, 0);
+            
+            // Executing the material on the destination texture
+            renderGraph.AddBlitPass(blitMaterialParameters, PassName);
+            
+            // Overriding the current camera color with the just computed texture
+            resourceData.cameraColor = destination;
+        }
+    }
+}
