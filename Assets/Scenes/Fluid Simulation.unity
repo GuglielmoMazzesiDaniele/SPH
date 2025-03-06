@@ -423,7 +423,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 32, y: 0, z: 0}
-  m_LocalScale: {x: 30, y: 15, z: 15}
+  m_LocalScale: {x: 20, y: 5, z: 7.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -463,12 +463,12 @@ MonoBehaviour:
   particleMass: 1
   collisionDamping: 0.95
   kernelRadius: 0.2
-  boundsSize: {x: 30, y: 15, z: 15}
+  boundsSize: {x: 20, y: 5, z: 7.5}
   gravity: 10
   restDensity: 650
   stiffness: 200
   viscosity: 0.01
-  simulationSubSteps: 3
+  simulationSubSteps: 4
   particleMaterial: {fileID: 2100000, guid: 8712fed4b32e58e4cb0d0285d55755b8, type: 2}
   particleSpeedGradient:
     serializedVersion: 2
@@ -530,9 +530,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnRegions:
-  - particlesAmount: 2000000
-    position: {x: 0, y: 0, z: 0}
-    size: {x: 10, y: 10, z: 10}
+  - particlesAmount: 250000
+    position: {x: 7.5, y: 0, z: 0}
+    size: {x: 5, y: 5, z: 7.5}
     boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}
 --- !u!114 &1558477425
 MonoBehaviour:
@@ -546,13 +546,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 20ec0af106e5c7141a790c37e55932f5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  size: {x: 128, y: 128, z: 128}
+  size: {x: 256, y: 256, z: 256}
   sliceMaterial: {fileID: 2100000, guid: 99f7c6720421a8f4487e3a6b83639027, type: 2}
   sliceDepth: 0.5
   depictedDensityRange: {x: 0.00001, y: 1.5}
   rayMarchingMaterial: {fileID: 2100000, guid: 2b6dcb4f69d53bf41a233eda545db18b, type: 2}
   stepsAmount: 300
-  densityMultiplier: 1.35
+  densityMultiplier: 3
   scatteringCoefficients: {x: 0.25, y: 1, z: 2.5}
   densityMap: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
