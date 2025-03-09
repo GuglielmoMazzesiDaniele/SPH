@@ -129,8 +129,8 @@ GameObject:
   m_Component:
   - component: {fileID: 330585546}
   - component: {fileID: 330585545}
-  - component: {fileID: 330585544}
   - component: {fileID: 330585547}
+  - component: {fileID: 330585548}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -138,14 +138,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!81 &330585544
-AudioListener:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 330585543}
-  m_Enabled: 1
 --- !u!20 &330585545
 Camera:
   m_ObjectHideFlags: 0
@@ -206,7 +198,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0.2164396, y: 0, z: 0, w: 0.97629607}
-  m_LocalPosition: {x: 19.95, y: 10, z: -24.4}
+  m_LocalPosition: {x: 10, y: 10, z: -24.4}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -256,6 +248,22 @@ MonoBehaviour:
     m_MipBias: 0
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
+--- !u!114 &330585548
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ecf80e0f5eed2a44f8310492a8a0e72f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  lookSpeed: 2
+  moveSpeed: 10
+  zoomSpeed: 5
+  panSpeed: 0.5
 --- !u!1 &371963063
 GameObject:
   m_ObjectHideFlags: 0
@@ -423,7 +431,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 20, y: 0, z: 0}
-  m_LocalScale: {x: 30, y: 10, z: 10}
+  m_LocalScale: {x: 20, y: 10, z: 10}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -549,7 +557,7 @@ MonoBehaviour:
   particleMass: 1
   collisionDamping: 0.95
   kernelRadius: 0.18
-  boundsSize: {x: 30, y: 10, z: 10}
+  boundsSize: {x: 20, y: 10, z: 10}
   gravity: 10
   restDensity: 650
   stiffness: 200
@@ -587,7 +595,7 @@ MonoBehaviour:
     m_NumColorKeys: 3
     m_NumAlphaKeys: 2
   speedGradientTextureWidth: 256
-  renderSimulation: 0
+  renderSimulation: 1
 --- !u!4 &1558477423
 Transform:
   m_ObjectHideFlags: 0
@@ -616,9 +624,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnRegions:
-  - particlesAmount: 1000000
-    position: {x: -10.1, y: 0, z: 0}
-    size: {x: 10, y: 10, z: 10}
+  - particlesAmount: 500000
+    position: {x: -5, y: 0, z: 0}
+    size: {x: 7.5, y: 7.5, z: 7.5}
     boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}
 --- !u!114 &1558477425
 MonoBehaviour:
@@ -637,8 +645,8 @@ MonoBehaviour:
   sliceDepth: 0.5
   depictedDensityRange: {x: 0.00001, y: 1.5}
   rayMarchingMaterial: {fileID: 2100000, guid: 2b6dcb4f69d53bf41a233eda545db18b, type: 2}
-  stepsAmount: 250
-  internalStepsAmount: 75
+  stepsAmount: 200
+  internalStepsAmount: 50
   sunDirection: {x: 1, y: 1, z: 1}
   densityMultiplier: 15
   scatteringCoefficients: {x: 1, y: 0.2, z: 0.25}

@@ -7,7 +7,7 @@ Shader "Custom/Ray Marching Fluid"
     }
     SubShader
     {
-        Tags { "RenderType"="Opaque" "RenderPipeline" = "UniversalPipeline"  }
+        Tags {"Queue"="Transparent" "RenderType"="Transparent"}
     
         Pass
         {
@@ -139,7 +139,10 @@ Shader "Custom/Ray Marching Fluid"
                     current_positionOS += view_directionOS * step_size;
                 }
 
-                return float4(total_radiance, 1.0f);
+                if(any(total_radiance >= 1e-2))
+                    return float4(total_radiance, 1.0f);
+                else
+                    return float4(0, 0, 0, 0);
             }
         
         ENDHLSL
