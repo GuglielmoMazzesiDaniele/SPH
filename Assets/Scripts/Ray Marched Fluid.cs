@@ -5,18 +5,21 @@ using UnityEngine.Serialization;
 public class RayMarchedFluid : MonoBehaviour
 {
     [Header("Density Map")] 
-    [SerializeField] public Vector3Int size;
+    public Vector3Int size;
+    public bool updateDensityMap;
 
     [Header("Density Slice")] 
-    [SerializeField] public Material sliceMaterial;
-    [SerializeField] [Range(0.0f, 1.0f)] public float sliceDepth;
-    [SerializeField] public Vector2 depictedDensityRange;
+    public Material sliceMaterial;
+    [Range(0.0f, 1.0f)] public float sliceDepth;
+    public Vector2 depictedDensityRange;
 
     [Header("Ray Marching Fluid")] 
-    [SerializeField] public Material rayMarchingMaterial;
-    [SerializeField] public int stepsAmount;
-    [SerializeField] public float densityMultiplier;
-    [SerializeField] public Vector3 scatteringCoefficients;
+    public Material rayMarchingMaterial;
+    public int stepsAmount;
+    public int internalStepsAmount;
+    public Vector3 sunDirection;
+    public float densityMultiplier;
+    public Vector3 scatteringCoefficients;
     
     // Density map
     [HideInInspector] public RenderTexture densityMap;
@@ -28,9 +31,10 @@ public class RayMarchedFluid : MonoBehaviour
     private readonly int _sliceMaxDensityID = Shader.PropertyToID("_MaxDensityValue");
     
     // Ray Marching fluid shader's variables IDs
-    private readonly int _stepsAmountID = Shader.PropertyToID("_StepsAmount");
-    private readonly int _densityMultiplierID = Shader.PropertyToID("_DensityMultiplier");
-    private readonly int _stepSizeID = Shader.PropertyToID("step_size");
+    private readonly int _stepsAmountID = Shader.PropertyToID("steps_amount");
+    private readonly int _internalStepsAmountID = Shader.PropertyToID("internal_steps_amount");
+    private readonly int _sunDirectionID = Shader.PropertyToID("sun_direction");
+    private readonly int _densityMultiplierID = Shader.PropertyToID("density_multiplier");
     private readonly int _scatteringCoefficientsID = Shader.PropertyToID("scattering_coefficients");
     
     # region Unity Callback Functions
@@ -49,14 +53,15 @@ public class RayMarchedFluid : MonoBehaviour
             // Setting the texture filter
             filterMode = FilterMode.Bilinear,
             // Setting the wrap mode
-            wrapMode = TextureWrapMode.Repeat
+            wrapMode = TextureWrapMode.Clamp
         };
         
         // Creating the density map
         densityMap.Create();
         
-        // Assigning the density map to the material
+        // Assigning the density map to the materials
         sliceMaterial.SetTexture(_densityMapSliceID, densityMap);
+        rayMarchingMaterial.SetTexture(_densityMapSliceID, densityMap);
     }
 
     private void Update()
@@ -73,10 +78,8 @@ public class RayMarchedFluid : MonoBehaviour
     /// </summary>
     private void UpdateDensitySliceVariables()
     {
-        // Assigning the slice depth to the material
+        // Setting the variables
         sliceMaterial.SetFloat(_sliceDepthID, sliceDepth);
-        
-        // Setting the range of densities to depict
         sliceMaterial.SetFloat(_sliceMinDensityID, depictedDensityRange.x);
         sliceMaterial.SetFloat(_sliceMaxDensityID, depictedDensityRange.y);
     }
@@ -86,13 +89,11 @@ public class RayMarchedFluid : MonoBehaviour
     /// </summary>
     private void UpdateRayMarchingVariables()
     {
-        // Assigning the density map
-        rayMarchingMaterial.SetTexture(_densityMapSliceID, densityMap);
-        
         // Setting the variables
         rayMarchingMaterial.SetInt(_stepsAmountID, stepsAmount);
+        rayMarchingMaterial.SetInt(_internalStepsAmountID, internalStepsAmount);
+        rayMarchingMaterial.SetVector(_sunDirectionID, sunDirection.normalized);
         rayMarchingMaterial.SetFloat(_densityMultiplierID, densityMultiplier);
-        rayMarchingMaterial.SetFloat(_stepSizeID, 1.0f / stepsAmount);
         rayMarchingMaterial.SetVector(_scatteringCoefficientsID, scatteringCoefficients);
     }
 

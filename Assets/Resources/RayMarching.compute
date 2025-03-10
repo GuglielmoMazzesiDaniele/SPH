@@ -1,5 +1,0 @@
-
-// Texture used for ray marching
-RWTexture3D<float> density_map;
-
-// Constants provided by the simulation
