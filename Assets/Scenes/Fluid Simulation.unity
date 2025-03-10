@@ -147,7 +147,7 @@ Camera:
   m_GameObject: {fileID: 330585543}
   m_Enabled: 1
   serializedVersion: 2
-  m_ClearFlags: 1
+  m_ClearFlags: 2
   m_BackGroundColor: {r: 0, g: 0, b: 0, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
@@ -430,7 +430,7 @@ Transform:
   m_GameObject: {fileID: 1271518543}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 20, y: 0, z: 0}
+  m_LocalPosition: {x: 0, y: 20, z: 0}
   m_LocalScale: {x: 20, y: 10, z: 10}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -561,7 +561,7 @@ MonoBehaviour:
   gravity: 10
   restDensity: 650
   stiffness: 200
-  viscosity: 0.01
+  viscosity: 0.1
   simulationSubSteps: 4
   particleMaterial: {fileID: 2100000, guid: 8712fed4b32e58e4cb0d0285d55755b8, type: 2}
   particleSpeedGradient:
@@ -625,7 +625,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   spawnRegions:
   - particlesAmount: 500000
-    position: {x: -5, y: 0, z: 0}
+    position: {x: 0, y: 0, z: 0}
     size: {x: 7.5, y: 7.5, z: 7.5}
     boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}
 --- !u!114 &1558477425
@@ -641,6 +641,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   size: {x: 128, y: 128, z: 128}
+  updateDensityMap: 1
   sliceMaterial: {fileID: 2100000, guid: 99f7c6720421a8f4487e3a6b83639027, type: 2}
   sliceDepth: 0.5
   depictedDensityRange: {x: 0.00001, y: 1.5}

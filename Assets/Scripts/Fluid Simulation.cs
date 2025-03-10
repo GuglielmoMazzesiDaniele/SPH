@@ -480,10 +480,11 @@ public class FluidSimulation : MonoBehaviour
         }
 
         // Updating the density map
-        _simulationComputeShader.Dispatch(_updateDensityMapKernelID,
-            Mathf.CeilToInt(_rayMarchedFluid.size.x / 8.0f), 
-            Mathf.CeilToInt(_rayMarchedFluid.size.y / 8.0f), 
-            Mathf.CeilToInt(_rayMarchedFluid.size.z / 8.0f));
+        if(_rayMarchedFluid.updateDensityMap)
+            _simulationComputeShader.Dispatch(_updateDensityMapKernelID,
+                Mathf.CeilToInt(_rayMarchedFluid.size.x / 8.0f), 
+                Mathf.CeilToInt(_rayMarchedFluid.size.y / 8.0f), 
+                Mathf.CeilToInt(_rayMarchedFluid.size.z / 8.0f));
     }
 
     /// <summary>

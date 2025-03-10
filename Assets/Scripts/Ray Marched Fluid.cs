@@ -5,7 +5,8 @@ using UnityEngine.Serialization;
 public class RayMarchedFluid : MonoBehaviour
 {
     [Header("Density Map")] 
-    [SerializeField] public Vector3Int size;
+    public Vector3Int size;
+    public bool updateDensityMap;
 
     [Header("Density Slice")] 
     public Material sliceMaterial;
