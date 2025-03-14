@@ -1,4 +1,4 @@
-Shader "Custom/RayMarchingSphere"
+Shader "Custom/Ray Marched Cube"
 {
     Properties
     {

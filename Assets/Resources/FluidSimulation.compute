@@ -156,7 +156,7 @@ void resolve_collision(uint target_particle_index)
 // Converts given density into pressure
 float convert_density_to_pressure(float density)
 {
-    return (density - rest_density) * stiffness;
+    return stiffness * (density - rest_density);
 }
 
 // Calculate the shared pressure between two densities

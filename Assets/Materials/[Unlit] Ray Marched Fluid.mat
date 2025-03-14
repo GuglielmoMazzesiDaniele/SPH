@@ -7,7 +7,7 @@ Material:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: '[Unlit] Ray Marching Fluid'
+  m_Name: '[Unlit] Ray Marched Fluid'
   m_Shader: {fileID: 4800000, guid: 3e4f90edc3054554ea5db73304736462, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0

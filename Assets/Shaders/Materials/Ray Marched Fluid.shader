@@ -1,4 +1,4 @@
-Shader "Custom/Ray Marching Fluid"
+Shader "Custom/Ray Marched Fluid"
 {
     Properties
     {

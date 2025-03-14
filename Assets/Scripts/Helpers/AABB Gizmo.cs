@@ -7,6 +7,10 @@ public class AABBGizmo : MonoBehaviour
     
     private void OnDrawGizmos()
     {
+        // If the game is running, return
+        if (Application.isPlaying)
+            return;
+        
         // Drawing the simulation bounding box
         Gizmos.color = gizmoColor;
         Gizmos.DrawWireCube(transform.position, transform.localScale);
