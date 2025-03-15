@@ -98,6 +98,49 @@ Shader "Custom/Ray Marched Fluid"
                 return float3(0, 0, sign(positionOS.z));
             }
 
+            // Given a position in OS, return its surface normal
+            float3 surface_normal(float3 positionOS)
+            {
+                // Auxiliary constants
+                const float sampling_offset = 1e-3;
+                const float max_boundaries_smoothing_distance = 8e-3;
+
+                // Computing the offsets per axis
+                float3 offsetX = float3(1, 0, 0) * sampling_offset;
+                float3 offsetY = float3(0, 1, 0) * sampling_offset;
+                float3 offsetZ = float3(0, 0, 1) * sampling_offset;
+
+                // Computing the gradient along all axis
+                float dx = sample_density(positionOS - offsetX)
+                    - sample_density(positionOS + offsetX);
+                float dy = sample_density(positionOS - offsetY)
+                    - sample_density(positionOS + offsetY);
+                float dz = sample_density(positionOS - offsetZ)
+                    - sample_density(positionOS + offsetZ);
+
+                // Normalizing the gradients to obtain the volume normal
+                float3 volume_normal = normalize(float3(dx, dy, dz));
+
+                // Obtaining the closest face normal to the current position
+                float3 face_normal = closest_face_normal(positionOS);
+                
+                // Computing the distance to boundaries
+                float3 boundaries_distance = 0.5f - abs(positionOS);
+
+                // Extracting the distance to the closest boundary
+                float min_boundaries_distance = min(boundaries_distance.x,
+                    min(boundaries_distance.y, boundaries_distance.z));
+
+                // Computing the weight of the face normal based on the distance to it
+                float face_weight = (1 - smoothstep(0, max_boundaries_smoothing_distance, min_boundaries_distance));
+
+                // Computing the interpolated normal between volume and face normal
+                float3 interpolated_normal = normalize(volume_normal * (1 - face_weight)
+                    + face_normal * face_weight);
+                
+                return interpolated_normal;
+            }
+
             // Given a ray in object space, computes the total fluid density along the ray
             float total_density_along_rayOS (Ray ray, float step_size)
             {
@@ -140,8 +183,8 @@ Shader "Custom/Ray Marched Fluid"
 
                 // Initializing the color
                 float4 final_color = 0;
-
-                // Raymarching to verify if the view ray intersect the fluid
+                
+                // Raymarching to verify if the view ray intersect the fluid6
                 [loop]
                 for(int i = 0; i < steps_amount; i++)
                 {
@@ -151,6 +194,7 @@ Shader "Custom/Ray Marched Fluid"
                     // If I reached the boundaries of the cube, break
                     if(any(abs(current_positionOS) >= 0.5f + EPSILON))
                         break;
+                    
 
                     // Sampling the density at the current position
                     float sampled_density = sample_density(current_positionOS).r;
@@ -158,45 +202,7 @@ Shader "Custom/Ray Marched Fluid"
                     // If the density is above the threshold, compute the normal of the surface
                     if(sampled_density >= 5e-1)
                     { 
-                        // Auxiliary constants
-                        const float sampling_offset = 1e-3;
-                        const float max_boundaries_smoothing_distance = 8e-3;
-
-                        // Computing the offsets per axis
-                        float3 offsetX = float3(1, 0, 0) * sampling_offset;
-                        float3 offsetY = float3(0, 1, 0) * sampling_offset;
-                        float3 offsetZ = float3(0, 0, 1) * sampling_offset;
-
-                        // Computing the gradient along all axis
-                        float dx = sample_density(current_positionOS - offsetX)
-                            - sample_density(current_positionOS + offsetX);
-                        float dy = sample_density(current_positionOS - offsetY)
-                            - sample_density(current_positionOS + offsetY);
-                        float dz = sample_density(current_positionOS - offsetZ)
-                            - sample_density(current_positionOS + offsetZ);
-
-                        // Normalizing the gradients to obtain the volume normal
-                        float3 volume_normal = normalize(float3(dx, dy, dz));
-
-                        // Obtaining the closest face normal to the current position
-                        float3 face_normal = closest_face_normal(current_positionOS);
-                        
-                        // Computing the distance to boundaries
-                        float3 boundaries_distance = 0.5f - abs(current_positionOS);
-
-                        // Extracting the distance to the closest boundary
-                        float min_boundaries_distance = min(boundaries_distance.x,
-                            min(boundaries_distance.y, boundaries_distance.z));
-
-                        // Computing the weight of the face normal based on the distance to it
-                        float face_weight = (1 - smoothstep(0, max_boundaries_smoothing_distance, min_boundaries_distance));
-
-                        // Computing the interpolated normal between volume and face normal
-                        float3 interpolated_normal = normalize(volume_normal * (1 - face_weight)
-                            + face_normal * face_weight);
-
-                        // Setting the interpolated normal as final color
-                        final_color = float4((interpolated_normal + 1) * 0.5, 1);
+                        final_color = float4((surface_normal(current_positionOS) + 1) * 0.5, 1);
                         break;
                     }
                 }
