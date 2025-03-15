@@ -368,7 +368,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!23 &1271518545
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -638,7 +638,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnRegions:
-  - particlesAmount: 500000
+  - particlesAmount: 250000
     position: {x: 0, y: 0, z: 0}
     size: {x: 5, y: 5, z: 5}
     boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}
@@ -655,12 +655,12 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   size: {x: 128, y: 128, z: 128}
-  updateDensityMap: 0
+  updateDensityMap: 1
   sliceMaterial: {fileID: 2100000, guid: 99f7c6720421a8f4487e3a6b83639027, type: 2}
   sliceDepth: 0.5
   depictedDensityRange: {x: 0.00001, y: 1.5}
   rayMarchingMaterial: {fileID: 2100000, guid: 2b6dcb4f69d53bf41a233eda545db18b, type: 2}
-  stepsAmount: 200
+  stepsAmount: 1000
   internalStepsAmount: 50
   sunDirection: {x: 1, y: 1, z: 1}
   densityMultiplier: 15
@@ -684,7 +684,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!64 &1875467725
 MeshCollider:
   m_ObjectHideFlags: 0
