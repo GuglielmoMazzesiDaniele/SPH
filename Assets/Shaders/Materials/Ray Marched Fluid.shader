@@ -22,6 +22,7 @@ Shader "Custom/Ray Marched Fluid"
             
             // Allowed floating point inaccuracy
             #define EPSILON 1e-5
+            #define AIR_IOR 1.0003
             
             struct Attributes
             {
@@ -50,10 +51,7 @@ Shader "Custom/Ray Marched Fluid"
             float density_multiplier;
             float refraction_index;
             float3 scattering_coefficients;
-
-            // Constant
-            const float AIR_IOR = 1.0003f;
-
+            
             // Vertex Shader
             Varyings vert (Attributes input)
             {
@@ -184,7 +182,7 @@ Shader "Custom/Ray Marched Fluid"
                 view_ray.direction = TransformWorldToObjectDir(normalize(input.positionWS - GetCameraPositionWS()));
 
                 // Initializing the current position
-                float3 current_positionOS = view_ray.origin + 1e-4 * view_ray.direction;
+                float3 current_position = view_ray.origin + 1e-4 * view_ray.direction;
 
                 // Initializing the color
                 float4 final_color = 0;
@@ -195,21 +193,34 @@ Shader "Custom/Ray Marched Fluid"
                 [loop]
                 for(int i = 0; i < steps_amount; i++)
                 {
+                    // Sampling the density at the current position
+                    float sampled_density = sample_density(current_position);
+                    
                     // If I reached the boundaries of the cube, break
-                    if(any(abs(current_positionOS) >= 0.5f + EPSILON))
+                    if(any(abs(current_position) >= 0.5f))
                         break;
                     
-                    // Sampling the density at the current position
-                    float sampled_density = sample_density(current_positionOS);
-
                     // Verify if I reached a new surface
-                    if(sampled_density >= 5e-1 && !is_submerged || sampled_density < 5e-1 && is_submerged)
+                    if((sampled_density >= 2.5e-1 && !is_submerged) || (sampled_density < 2.5e-1 && is_submerged))
                     {
                         // Increasing amount of surface collisions
                         current_surface_collisions++;
                         
+                        // Flipping flag
+                        is_submerged = !is_submerged;
+                         
                         // Computing the normal at the current point
-                        float3 surface_normal = compute_surface_normal(current_positionOS);
+                        float3 surface_normal = compute_surface_normal(current_position);
+
+                        // Storing the surface normal as pixel color
+                        // final_color = float4((surface_normal + 1) * 0.5, 1);
+                        
+                        // If I reached the maximum surface collisions, break
+                        if(current_surface_collisions >= max_surface_collisions)
+                        {
+                            final_color = float4((surface_normal + 1) * 0.5, 1);
+                            break;
+                        }
                         
                         // Verifying if the direction and normal are correctly aligned
                         float3 correct_normal = dot(view_ray.direction, surface_normal) < 0 ?
@@ -230,29 +241,16 @@ Shader "Custom/Ray Marched Fluid"
                         {
                             // Changing the current direction to the reflected direction
                             view_ray.direction = reflected_direction;
-                            // Changing the final color to blue
-                            final_color = float4(0, 0, 0.75, 1);
                         }
                         else
                         {
                             // Changing the current direction to the refracted direction
                             view_ray.direction = refracted_direction;
-                            // Changing the final color to green
-                            final_color = float4(0, 0.75, 0, 1);
                         }
-                        
-                        // If I reached the maximum surface collisions, break
-                        if(current_surface_collisions >= max_surface_collisions)
-                        {
-                            break;
-                        }
-                        
-                        // Flipping flag
-                        is_submerged = !is_submerged;
                     }
                     
                     // Advancing the current position
-                    current_positionOS += step_size * view_ray.direction;
+                    current_position += step_size * view_ray.direction;
                 }
 
                 return final_color;

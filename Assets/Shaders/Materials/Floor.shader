@@ -59,38 +59,34 @@ Shader "Custom/Floor"
             // Fragment shader
             float4 frag (Varyings input) : SV_Target
             {
-                // Intializing the colors
-                float4 positive_color = float4(1, 0, 0, 1);
-                float4 negative_color = float4(0, 0, 1, 1);
-
                 // Mapping the UV coordinates from [0, 1] to [-1, 1]
                 float2 expanded_uv = input.uv * 2 - 1.0f;
 
                 // Initializing the quadrant color
-                float4 quadrant_color = 0;
+                float4 final_color = 0;
                 
                 // First quadrant 
                 if(expanded_uv.x >= 0 && expanded_uv.y >= 0)
-                    quadrant_color =  _FirstQuadrantColor;
+                    final_color =  _FirstQuadrantColor;
                 // Second quadrant
                 if(expanded_uv.x < 0 && expanded_uv.y >= 0)
-                    quadrant_color = _SecondQuadrantColor;
+                    final_color = _SecondQuadrantColor;
                 // Third quadrant
                 if(expanded_uv.x < 0 && expanded_uv.y < 0)
-                    quadrant_color = _ThirdQuadrantColor;
+                    final_color = _ThirdQuadrantColor;
                 // Fourth quadrant
                 if(expanded_uv.x >= 0 && expanded_uv.y < 0)
-                    quadrant_color = _FourthQuadrantColor;
+                    final_color = _FourthQuadrantColor;
 
                 // Chessboard pattern
                 if(abs(floor(expanded_uv.x * 100) % 2) == abs(floor(expanded_uv.y * 100) % 2))
-                    quadrant_color = float4(
-                        quadrant_color.x * 0.75,
-                        quadrant_color.y * 0.75,
-                        quadrant_color.z * 0.75,
-                        quadrant_color.w);
+                    final_color = float4(
+                        final_color.x * 0.75,
+                        final_color.y * 0.75,
+                        final_color.z * 0.75,
+                        final_color.w);
 
-                return quadrant_color;
+                return final_color;
             }
             
             ENDHLSL

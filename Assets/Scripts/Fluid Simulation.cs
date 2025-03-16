@@ -34,11 +34,15 @@ public class FluidSimulation : MonoBehaviour
     public bool renderSimulation;
     public RayMarchedFluid rayMarchedFluid;
     public RayMarchedGas rayMarchedGas;
+    public RayMarchedCube rayMarchedCube;
     public DensitySlice densitySlice;
     
     [Header("Density Map")] 
     public Vector3Int densityMapSize;
     public bool updateDensityMap;
+
+    [Header("Floor")] 
+    public Transform floorTransform;
     
     #region CPU Related Fields
     
@@ -110,6 +114,9 @@ public class FluidSimulation : MonoBehaviour
     private readonly int _auxiliaryPositionsBufferID = Shader.PropertyToID("auxiliary_positions");
     private readonly int _auxiliaryPredictedPositionsBufferID = Shader.PropertyToID("auxiliary_predicted_positions");
     private readonly int _auxiliaryVelocitiesBufferID = Shader.PropertyToID("auxiliary_velocities");
+
+    private readonly int _floorObjectToWorldID = Shader.PropertyToID("floor_object_to_world");
+    private readonly int _floorWorldToObjectID = Shader.PropertyToID("floor_world_to_object");
     #endregion
 
     #region GPU Related Fields
@@ -407,6 +414,7 @@ public class FluidSimulation : MonoBehaviour
         densitySlice.material.SetTexture(_densityMapPropertyID, _densityMap);
         rayMarchedGas.material.SetTexture(_densityMapPropertyID, _densityMap);
         rayMarchedFluid.material.SetTexture(_densityMapPropertyID, _densityMap);
+        
     }
     
     #endregion
@@ -450,6 +458,9 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void Update()
     {
+        // TODO: Move elsewhere
+        rayMarchedCube.material.SetMatrix(_floorWorldToObjectID, floorTransform.worldToLocalMatrix);
+        
         // Handling possible user's inputs
         HandleInputs();
         
