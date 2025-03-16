@@ -10,28 +10,35 @@ using Vector3 = UnityEngine.Vector3;
 public class FluidSimulation : MonoBehaviour
 {
     [Header("Particle")]
-    [SerializeField] public float particleRadius;
-    [SerializeField] public float particleMass;
-    [SerializeField] [Range(0.0f, 1.0f)] public float collisionDamping;
+    public float particleRadius;
+    public float particleMass;
+    [Range(0.0f, 1.0f)] public float collisionDamping;
     
     [Header("Kernel")]
-    [SerializeField] public float kernelRadius;
+    public float kernelRadius;
     
     [Header("Bounds")]
-    [SerializeField] public Vector3 boundsSize;
+    public Vector3 boundsSize;
     
     [Header("Simulation")]
-    [SerializeField] public float gravity;
-    [SerializeField] public float restDensity;
-    [SerializeField] public float stiffness;
-    [SerializeField] public float viscosity;
-    [SerializeField] public uint simulationSubSteps;
+    public float gravity;
+    public float restDensity;
+    public float stiffness;
+    public float viscosity;
+    public uint simulationSubSteps;
     
     [Header("Rendering")]
-    [SerializeField] public Material particleMaterial;
-    [SerializeField] public Gradient particleSpeedGradient;
-    [SerializeField] public int speedGradientTextureWidth;
-    [SerializeField] public bool renderSimulation;
+    public Material particleMaterial;
+    public Gradient particleSpeedGradient;
+    public int speedGradientTextureWidth;
+    public bool renderSimulation;
+    public RayMarchedFluid rayMarchedFluid;
+    public RayMarchedGas rayMarchedGas;
+    public DensitySlice densitySlice;
+    
+    [Header("Density Map")] 
+    public Vector3Int densityMapSize;
+    public bool updateDensityMap;
     
     #region CPU Related Fields
     
@@ -40,9 +47,8 @@ public class FluidSimulation : MonoBehaviour
     
     // Reference to the particles spawner
     private FluidSpawner _fluidSpawner;
-    
-    // Reference to the ray marching 
-    private RayMarchedFluid _rayMarchedFluid;
+    // Density Map
+    private RenderTexture _densityMap;
     
     // Fields related to user input
     private bool _isSimulationPlaying = true;
@@ -74,6 +80,7 @@ public class FluidSimulation : MonoBehaviour
     private readonly int _deltaTimeID = Shader.PropertyToID("delta_time");
     
     private readonly int _densityMapID = Shader.PropertyToID("density_map");
+    private readonly int _densityMapPropertyID = Shader.PropertyToID("_DensityMap");
     private readonly int _densityMapSizeID = Shader.PropertyToID("density_map_size");
     
     private readonly int _gravityID = Shader.PropertyToID("gravity");
@@ -103,7 +110,6 @@ public class FluidSimulation : MonoBehaviour
     private readonly int _auxiliaryPositionsBufferID = Shader.PropertyToID("auxiliary_positions");
     private readonly int _auxiliaryPredictedPositionsBufferID = Shader.PropertyToID("auxiliary_predicted_positions");
     private readonly int _auxiliaryVelocitiesBufferID = Shader.PropertyToID("auxiliary_velocities");
-    
     #endregion
 
     #region GPU Related Fields
@@ -120,6 +126,7 @@ public class FluidSimulation : MonoBehaviour
     // Particles material gradient texture
     private Texture2D _speedGradientTexture;
     
+    // Reference to the spatial grid algorithm
     private SpatialGrid _spatialGrid;
 
     // Kernel IDs
@@ -146,8 +153,8 @@ public class FluidSimulation : MonoBehaviour
         // Linking the fluid spawner
         _fluidSpawner = GetComponent<FluidSpawner>();
         
-        // Linking the ray marching
-        _rayMarchedFluid = GetComponent<RayMarchedFluid>();
+        // Initializing the density map used in multiple rendering pipelines
+        InitializeDensityMap();
         
         // Initializing the particles
         InitializeParticles();
@@ -166,7 +173,6 @@ public class FluidSimulation : MonoBehaviour
         
         // Initializing the variables related to the rendering pipeline
         InitializeParticleShader();
-        
     }
 
     /// <summary>
@@ -337,7 +343,7 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _spatialOffsetsBufferID, _spatialGrid.SpatialOffsetsBuffer);
         
         // Setting the texture for the density map kernel
-        _simulationComputeShader.SetTexture(_updateDensityMapKernelID, _densityMapID, _rayMarchedFluid.densityMap);
+        _simulationComputeShader.SetTexture(_updateDensityMapKernelID, _densityMapID, _densityMap);
         _simulationComputeShader.SetBuffer(_updateDensityMapKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
         _simulationComputeShader.SetBuffer(_updateDensityMapKernelID, _spatialKeysBufferID, _spatialGrid.SpatialKeysBuffer);
         _simulationComputeShader.SetBuffer(_updateDensityMapKernelID, _spatialIndicesBufferID, _spatialGrid.SpatialIndicesBuffer);
@@ -354,8 +360,7 @@ public class FluidSimulation : MonoBehaviour
         // Setting ComputeShader's vectors
         _simulationComputeShader.SetVector(_halfBoundsSizeID, _halfBoundsSize);
         _simulationComputeShader.SetVector(_boundsSizeID, boundsSize);
-        _simulationComputeShader.SetInts(_densityMapSizeID, _rayMarchedFluid.size.x, 
-            _rayMarchedFluid.size.y, _rayMarchedFluid.size.z);
+        _simulationComputeShader.SetInts(_densityMapSizeID, densityMapSize.x, densityMapSize.y, densityMapSize.z);
         
         // Setting ComputeShader's matrices
         _simulationComputeShader.SetMatrix(_localToWorldMatrixID, transform.localToWorldMatrix);
@@ -376,6 +381,32 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetFloat(_restDensityID, restDensity);
         _simulationComputeShader.SetFloat(_stiffnessID, stiffness);
         _simulationComputeShader.SetFloat(_viscosityID, viscosity);
+    }
+
+    private void InitializeDensityMap()
+    {
+        // Initializing the density map
+        _densityMap = new RenderTexture(densityMapSize.x, densityMapSize.y, 0, RenderTextureFormat.RFloat)
+        {
+            // Signaling to Unity that this is a 3D texture
+            dimension = UnityEngine.Rendering.TextureDimension.Tex3D,
+            // Setting the texture depth 
+            volumeDepth = densityMapSize.z,
+            // Allowing random write on the texture (done by the Compute Shader)
+            enableRandomWrite = true,
+            // Setting the texture filter
+            filterMode = FilterMode.Bilinear,
+            // Setting the wrap mode
+            wrapMode = TextureWrapMode.Clamp
+        };
+        
+        // Creating the density map
+        _densityMap.Create();
+        
+        // Assigning the map to every material that uses it
+        densitySlice.material.SetTexture(_densityMapPropertyID, _densityMap);
+        rayMarchedGas.material.SetTexture(_densityMapPropertyID, _densityMap);
+        rayMarchedFluid.material.SetTexture(_densityMapPropertyID, _densityMap);
     }
     
     #endregion
@@ -480,11 +511,11 @@ public class FluidSimulation : MonoBehaviour
         }
 
         // Updating the density map
-        if(_rayMarchedFluid.updateDensityMap)
+        if(updateDensityMap)
             _simulationComputeShader.Dispatch(_updateDensityMapKernelID,
-                Mathf.CeilToInt(_rayMarchedFluid.size.x / 8.0f), 
-                Mathf.CeilToInt(_rayMarchedFluid.size.y / 8.0f), 
-                Mathf.CeilToInt(_rayMarchedFluid.size.z / 8.0f));
+                Mathf.CeilToInt(densityMapSize.x / 8.0f), 
+                Mathf.CeilToInt(densityMapSize.y / 8.0f), 
+                Mathf.CeilToInt(densityMapSize.z / 8.0f));
     }
 
     /// <summary>

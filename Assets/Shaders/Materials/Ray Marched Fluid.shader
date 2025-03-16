@@ -46,10 +46,13 @@ Shader "Custom/Ray Marched Fluid"
 
             // Variables
             int steps_amount;
-            int internal_steps_amount;
+            int max_surface_collisions;
             float density_multiplier;
+            float refraction_index;
             float3 scattering_coefficients;
-            float3 sun_direction;
+
+            // Constant
+            const float AIR_IOR = 1.0003f;
 
             // Vertex Shader
             Varyings vert (Attributes input)
@@ -69,7 +72,7 @@ Shader "Custom/Ray Marched Fluid"
             // Given a position in OS, returns the density at the given position
             float sample_density(float3 positionOS)
             {
-                return SAMPLE_TEXTURE3D(_DensityMap, sampler_DensityMap, positionOS + 0.5f);
+                return SAMPLE_TEXTURE3D(_DensityMap, sampler_DensityMap, positionOS + 0.5f).x;
             }
 
             // Given a position in OS, returns the closest face normal
@@ -99,7 +102,7 @@ Shader "Custom/Ray Marched Fluid"
             }
 
             // Given a position in OS, return its surface normal
-            float3 surface_normal(float3 positionOS)
+            float3 compute_surface_normal(float3 positionOS)
             {
                 // Auxiliary constants
                 const float sampling_offset = 1e-3;
@@ -159,7 +162,7 @@ Shader "Custom/Ray Marched Fluid"
                         break;
 
                     // Sampling the texture at the current position mapped to UV range [0,1]
-                    float sampled_density = sample_density(current_position).x
+                    float sampled_density = sample_density(current_position)
                         * step_size * density_multiplier;
 
                     // Adding the sampled density to the total density
@@ -174,100 +177,87 @@ Shader "Custom/Ray Marched Fluid"
             {
                 // Computing the step sizes
                 float step_size = sqrt(3.0f) / steps_amount;
-                float internal_step_size = sqrt(3.0f) / internal_steps_amount;
 
                 // Intializing the view ray
-                Ray view_rayOS;
-                view_rayOS.origin = TransformWorldToObject(input.positionWS);
-                view_rayOS.direction = TransformWorldToObjectDir(normalize(input.positionWS - GetCameraPositionWS()));
+                Ray view_ray;
+                view_ray.origin = TransformWorldToObject(input.positionWS);
+                view_ray.direction = TransformWorldToObjectDir(normalize(input.positionWS - GetCameraPositionWS()));
+
+                // Initializing the current position
+                float3 current_positionOS = view_ray.origin + 1e-4 * view_ray.direction;
 
                 // Initializing the color
                 float4 final_color = 0;
+                bool is_submerged = false;
+                int current_surface_collisions = 0;
                 
-                // Raymarching to verify if the view ray intersect the fluid6
+                // Raymarching to verify if the view ray intersect the fluid
                 [loop]
                 for(int i = 0; i < steps_amount; i++)
                 {
-                    // Computing the current position
-                    float3 current_positionOS = view_rayOS.origin + i * step_size * view_rayOS.direction;
-
                     // If I reached the boundaries of the cube, break
                     if(any(abs(current_positionOS) >= 0.5f + EPSILON))
                         break;
                     
-
                     // Sampling the density at the current position
-                    float sampled_density = sample_density(current_positionOS).r;
+                    float sampled_density = sample_density(current_positionOS);
 
-                    // If the density is above the threshold, compute the normal of the surface
-                    if(sampled_density >= 5e-1)
-                    { 
-                        final_color = float4((surface_normal(current_positionOS) + 1) * 0.5, 1);
-                        break;
+                    // Verify if I reached a new surface
+                    if(sampled_density >= 5e-1 && !is_submerged || sampled_density < 5e-1 && is_submerged)
+                    {
+                        // Increasing amount of surface collisions
+                        current_surface_collisions++;
+                        
+                        // Computing the normal at the current point
+                        float3 surface_normal = compute_surface_normal(current_positionOS);
+                        
+                        // Verifying if the direction and normal are correctly aligned
+                        float3 correct_normal = dot(view_ray.direction, surface_normal) < 0 ?
+                            surface_normal : -surface_normal;
+
+                        // Verifying the index of refraction between the mediums
+                        float correct_IOR = dot(view_ray.direction, surface_normal) < 0 ?
+                            AIR_IOR / refraction_index : refraction_index / AIR_IOR;
+
+                        // Computing the refraction direction using the current direction and the surface normal
+                        float3 refracted_direction = refract(view_ray.direction, correct_normal, correct_IOR);
+
+                        // Computing the reflection direction using the current direction and the surface normal
+                        float3 reflected_direction = reflect(view_ray.direction, correct_normal);
+
+                        // If the refraction direction is (0, 0, 0), refraction is impossible
+                        if(all(refracted_direction == 0))
+                        {
+                            // Changing the current direction to the reflected direction
+                            view_ray.direction = reflected_direction;
+                            // Changing the final color to blue
+                            final_color = float4(0, 0, 0.75, 1);
+                        }
+                        else
+                        {
+                            // Changing the current direction to the refracted direction
+                            view_ray.direction = refracted_direction;
+                            // Changing the final color to green
+                            final_color = float4(0, 0.75, 0, 1);
+                        }
+                        
+                        // If I reached the maximum surface collisions, break
+                        if(current_surface_collisions >= max_surface_collisions)
+                        {
+                            break;
+                        }
+                        
+                        // Flipping flag
+                        is_submerged = !is_submerged;
                     }
+                    
+                    // Advancing the current position
+                    current_positionOS += step_size * view_ray.direction;
                 }
 
                 return final_color;
             }
-
-            // Fragment shader
-            float4 old_frag (Varyings input) : SV_Target
-            {
-                // Initializing the auxiliary variables
-                float total_density = 0;
-                float3 total_radiance = 0;
-
-                // Computing the step sizes
-                float step_size = sqrt(3.0f) / steps_amount;
-                float internal_step_size = sqrt(3.0f) / internal_steps_amount;
-
-                // Intializing the view ray
-                Ray view_rayOS;
-                view_rayOS.origin = TransformWorldToObject(input.positionWS);
-                view_rayOS.direction = TransformWorldToObjectDir(normalize(input.positionWS - GetCameraPositionWS()));
-
-                // Raymarching through object space
-                [loop]
-                for(int i = 0; i < steps_amount; i++)
-                {
-                    // Computing the current position
-                    float3 current_positionOS = view_rayOS.origin + i * step_size * view_rayOS.direction;
-                    
-                    // If I reached the boundaries of the cube, break
-                    if(any(abs(current_positionOS) >= 0.5f + EPSILON))
-                        break;
-
-                    // Sampling the density at the current position
-                    float sampled_density = SAMPLE_TEXTURE3D(_DensityMap, sampler_DensityMap, current_positionOS + 0.5f).r
-                        * density_multiplier * step_size;
-
-                    // Adding the sampled density to the total
-                    total_density += sampled_density;
-
-                    // Initializing the sun ray reaching the current position in the fluid
-                    Ray sun_rayOS;
-                    sun_rayOS.origin = current_positionOS;
-                    sun_rayOS.direction = sun_direction;
-
-                    // Computing the density along the sun ray
-                    float3 density_along_sun_ray = total_density_along_rayOS(sun_rayOS, internal_step_size);
-
-                    // Computing an approximation of the radiance transmitted from the sun to the current point
-                    float3 sun_radiance = exp(-density_along_sun_ray * scattering_coefficients);
-                    
-                    // Computing an approximation of the light scattered towards the camera
-                    float3 scattered_light_towards_camera = sun_radiance * sampled_density * scattering_coefficients;
-
-                    // Computing an approximation of the radiance transmitted towards the camera
-                    float3 current_radiance = exp(- total_density * scattering_coefficients);
-
-                    // Adding the radiance that reaches the camera from the current position
-                    total_radiance += scattered_light_towards_camera * current_radiance;
-                }
-
-                return float4(total_radiance, 1.0f);
-            }
-        
+            
         ENDHLSL
         }
     }
