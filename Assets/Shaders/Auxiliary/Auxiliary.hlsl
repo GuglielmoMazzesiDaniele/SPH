@@ -1,3 +1,5 @@
+#include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
+
 // STRUCTS
 struct Ray
 {
@@ -18,16 +20,16 @@ float4 floor_uv_to_color(float2 uv)
                 
     // First quadrant 
     if(expanded_uv.x >= 0 && expanded_uv.y >= 0)
-        final_color =  float4(.75, 0, 0, 1);
+        final_color =  float4(0.988, 0.906, 0.784, 1);
     // Second quadrant
     if(expanded_uv.x < 0 && expanded_uv.y >= 0)
-        final_color = float4(0, .75, 0, 1);
+        final_color = float4(0.694, 0.761, 0.620, 1);
     // Third quadrant
     if(expanded_uv.x < 0 && expanded_uv.y < 0)
-        final_color = float4(0, 0, .75, 1);
+        final_color = float4(0.980, 0.855, 0.478, 1);
     // Fourth quadrant
     if(expanded_uv.x >= 0 && expanded_uv.y < 0)
-        final_color = float4(.5, .5, .5, 1);
+        final_color = float4(0.941, 0.627, 0.294, 1);
 
     // Chessboard pattern
     if(abs(floor(expanded_uv.x * 100) % 2) == abs(floor(expanded_uv.y * 100) % 2))
@@ -94,4 +96,10 @@ float3 cube_closest_face_normal(float3 position)
 
     // Returning the normal of the closest face perpendicular to the Z axis
     return float3(0, 0, sign(position.z));
+}
+
+// Given a ray in WS, sample the skybox of the camera
+float3 sample_skybox(Ray ray)
+{
+    
 }

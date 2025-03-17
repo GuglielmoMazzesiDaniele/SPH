@@ -94,10 +94,8 @@ Shader "Custom/Ray Marched Fluid"
                 if(all(floor_uv != -1))
                     return floor_uv_to_color(floor_uv);
                 
-                // TODO: Sampling the sky
-
-                // Default color: black
-                return float3(0, 0, 0);
+                // Sampling the sky
+                return SAMPLE_TEXTURECUBE(unity_SpecCube0, samplerunity_SpecCube0, ray.direction).rgb;
             }
 
             // Given a position in OS, return its surface normal
@@ -301,11 +299,11 @@ Shader "Custom/Ray Marched Fluid"
                         {
                             // Computing the density along the reflected ray
                             float density_along_reflected = total_density_along_ray(collision_info.reflected_ray,
-                                step_size * 10);
+                                step_size * 10 * (current_surface_collisions + 1));
                             
                             // Computing the density along the
                             float density_along_refracted = total_density_along_ray(collision_info.refracted_ray,
-                                step_size * 10);
+                                step_size * 10 * (current_surface_collisions + 1));
 
                             // Deciding which path to follow based on the intensity of the path and the total fluid
                             // density it will traverse
@@ -346,11 +344,25 @@ Shader "Custom/Ray Marched Fluid"
                     // Advancing the current position
                     ray_marching_position += step_size * ray_marching_direction;
                     
-                    // If I reached the boundaries of the cube, break
+                    // If I reached the boundaries of the simulation, break
                     if(any(abs(ray_marching_position) >= 0.5f))
+                    {
+                        // Case in which the ray was travelling in the water
+                        if(is_submerged)
+                            remaining_transmittance *= transmittance_decay(collected_density);
+                        
                         break;
+                    }
                 }
 
+                // Initializing the last ray
+                Ray last_ray;
+                last_ray.origin = ray_marching_position;
+                last_ray.direction = ray_marching_direction;
+
+                // Approximating the light incoming from the last ray
+                final_color += sample_enviroment(last_ray) * remaining_transmittance;
+                
                 return float4(final_color, 1);
             }
             
