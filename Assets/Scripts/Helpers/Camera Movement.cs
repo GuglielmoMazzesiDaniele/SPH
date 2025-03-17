@@ -95,6 +95,10 @@ public class CameraController : MonoBehaviour
         if (Input.GetKey(KeyCode.D)) currentTranslation += transform.right;
         if (Input.GetKey(KeyCode.Q)) currentTranslation -= transform.up;
         if (Input.GetKey(KeyCode.E)) currentTranslation += transform.up;
+        
+        // Verifying if the shift button is pressed
+        if (Input.GetKeyDown(KeyCode.LeftShift)) moveSpeed *= 10;
+        if (Input.GetKeyDown(KeyCode.LeftShift)) moveSpeed /= 10;
 
         // Applying the translation
         transform.position += moveSpeed * Time.deltaTime * currentTranslation;

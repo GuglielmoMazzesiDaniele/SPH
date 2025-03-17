@@ -131,6 +131,7 @@ GameObject:
   - component: {fileID: 330585545}
   - component: {fileID: 330585547}
   - component: {fileID: 330585548}
+  - component: {fileID: 330585549}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -264,6 +265,15 @@ MonoBehaviour:
   moveSpeed: 10
   zoomSpeed: 5
   panSpeed: 0.5
+--- !u!45 &330585549
+Skybox:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 330585543}
+  m_Enabled: 0
+  m_CustomSkybox: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
 --- !u!1 &371963063
 GameObject:
   m_ObjectHideFlags: 0
@@ -398,10 +408,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   material: {fileID: 2100000, guid: 059c2cd4f750f5845b63074eddbfa518, type: 2}
-  stepsAmount: 1000
+  stepsAmount: 1200
   maxSurfaceCollisions: 5
   refractionIndex: 1.33
-  densityMultiplier: 0.000000001
+  densityMultiplier: 1
   scatteringCoefficients: {x: 1, y: 1, z: 1}
 --- !u!23 &991875226
 MeshRenderer:
@@ -726,10 +736,10 @@ MonoBehaviour:
   particleMass: 1
   collisionDamping: 0.95
   kernelRadius: 0.2
-  boundsSize: {x: 10, y: 7.5, z: 7.5}
+  boundsSize: {x: 15, y: 9, z: 10}
   gravity: 10
-  restDensity: 1000
-  stiffness: 200
+  restDensity: 650
+  stiffness: 300
   viscosity: 0.01
   simulationSubSteps: 4
   slowMotionCoefficient: 0.1
@@ -801,9 +811,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnRegions:
-  - particlesAmount: 250000
+  - particlesAmount: 500000
     position: {x: 0, y: 0, z: 0}
-    size: {x: 5, y: 5, z: 5}
+    size: {x: 7.5, y: 7.5, z: 7.5}
     boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}
 --- !u!1 &1875467724
 GameObject:

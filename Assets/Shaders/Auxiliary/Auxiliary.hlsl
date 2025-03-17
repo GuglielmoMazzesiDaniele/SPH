@@ -9,6 +9,12 @@ struct Ray
 
 // FUNCTIONS
 
+// Given a pair of UV coordinates, generate a random value
+float rand(float2 uv)
+{
+    return frac(sin(dot(uv, float2(12.9898, 78.233))) * 43758.5453);
+}
+
 // Given a UV coordinate belonging to floor quad, return its corresponding color
 float4 floor_uv_to_color(float2 uv)
 {
@@ -16,30 +22,35 @@ float4 floor_uv_to_color(float2 uv)
     float2 expanded_uv = uv * 2 - 1.0f;
 
     // Initializing the quadrant color
-    float4 final_color = 0;
+    float3 final_color = 0;
                 
     // First quadrant 
     if(expanded_uv.x >= 0 && expanded_uv.y >= 0)
-        final_color =  float4(0.988, 0.906, 0.784, 1);
+        final_color =  float3(0.988, 0.906, 0.784);
     // Second quadrant
     if(expanded_uv.x < 0 && expanded_uv.y >= 0)
-        final_color = float4(0.694, 0.761, 0.620, 1);
+        final_color = float3(0.694, 0.761, 0.620);
     // Third quadrant
     if(expanded_uv.x < 0 && expanded_uv.y < 0)
-        final_color = float4(0.980, 0.855, 0.478, 1);
+        final_color = float3(0.980, 0.855, 0.478);
     // Fourth quadrant
     if(expanded_uv.x >= 0 && expanded_uv.y < 0)
-        final_color = float4(0.941, 0.627, 0.294, 1);
+        final_color = float3(0.941, 0.627, 0.294);
 
     // Chessboard pattern
     if(abs(floor(expanded_uv.x * 100) % 2) == abs(floor(expanded_uv.y * 100) % 2))
-        final_color = float4(
-            final_color.x * 0.75,
-            final_color.y * 0.75,
-            final_color.z * 0.75,
-            final_color.w);
+    {
+        // Generating a random darkening value between 0.7 and 1
+        float random_value = rand(floor(uv * 100));
 
-    return final_color;
+        // Mapping the random value from (0, 1] to [0.7, 1]
+        random_value = 0.5 + 0.5 * random_value;
+        
+        // Darkening the current cell
+        final_color *= random_value;
+    }
+
+    return float4(final_color, 1);
 }
 
 // Given a ray in WS and the floor inverse model matrix,

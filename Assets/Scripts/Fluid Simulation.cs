@@ -470,6 +470,10 @@ public class FluidSimulation : MonoBehaviour
         // If the simulation is not running, do no execute simulation step
         if (!_isSimulationPlaying)
             return;
+
+        // Updating the scale of the renderings
+        rayMarchedFluid.transform.localScale = boundsSize;
+        rayMarchedGas.transform.localScale = boundsSize;
         
         // Updating the variables related to the kernels
         UpdateKernelVariables();
