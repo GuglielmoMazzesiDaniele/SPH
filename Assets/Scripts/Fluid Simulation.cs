@@ -26,6 +26,7 @@ public class FluidSimulation : MonoBehaviour
     public float stiffness;
     public float viscosity;
     public uint simulationSubSteps;
+    public float slowMotionCoefficient;
     
     [Header("Rendering")]
     public Material particleMaterial;
@@ -56,6 +57,7 @@ public class FluidSimulation : MonoBehaviour
     
     // Fields related to user input
     private bool _isSimulationPlaying = true;
+    private bool _isSimulationSlowMotion = false;
     
     // Particles related fields
     private int _particlesAmount;
@@ -460,6 +462,7 @@ public class FluidSimulation : MonoBehaviour
     {
         // TODO: Move elsewhere
         rayMarchedCube.material.SetMatrix(_floorWorldToObjectID, floorTransform.worldToLocalMatrix);
+        rayMarchedFluid.material.SetMatrix(_floorWorldToObjectID, floorTransform.worldToLocalMatrix);
         
         // Handling possible user's inputs
         HandleInputs();
@@ -482,6 +485,10 @@ public class FluidSimulation : MonoBehaviour
         
         // Calculating the delta time per simulation step
         var stepDeltaTime = deltaTime / simulationSubSteps;
+        
+        // If the simulation is in slow motion, multiply the delta time by the slow motion coefficient
+        if (_isSimulationSlowMotion)
+            stepDeltaTime *= slowMotionCoefficient;
         
         // Setting the delta time in the GPU
         _simulationComputeShader.SetFloat(_deltaTimeID, stepDeltaTime);
@@ -570,6 +577,12 @@ public class FluidSimulation : MonoBehaviour
             _predictedPositionsBuffer.SetData(_predictedPositions);
             _densitiesBuffer.SetData(_densities);
             _velocitiesBuffer.SetData(_velocities);
+        }
+        
+        // Disabling or enabling slow motion
+        if (Input.GetKeyDown(KeyCode.F))
+        {
+            _isSimulationSlowMotion = !_isSimulationSlowMotion;
         }
     }
     

@@ -5,7 +5,7 @@ public class RayMarchedFluid : MonoBehaviour
     [Header("Ray Marched Fluid")] 
     public Material material;
     public int stepsAmount;
-    [Range(1, 3)] public int maxSurfaceCollisions;
+    [Range(1, 5)] public int maxSurfaceCollisions;
     public float refractionIndex;
     public float densityMultiplier;
     public Vector3 scatteringCoefficients;
