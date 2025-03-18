@@ -1,4 +1,4 @@
-Shader "Custom/Ray Marching Fluid"
+Shader "Custom/Ray Marched Gas"
 {
     Properties
     {
@@ -22,7 +22,7 @@ Shader "Custom/Ray Marching Fluid"
             
             // Allowed floating point inaccuracy
             #define EPSILON 1e-5
-
+            
             struct Attributes
             {
                 float4 positionOS : POSITION;
@@ -32,6 +32,12 @@ Shader "Custom/Ray Marching Fluid"
             {
                 float4 positionCS : SV_POSITION;
                 float3 positionWS: TEXCOORD0;
+            };
+
+            struct Ray
+            {
+                float3 origin;
+                float3 direction;
             };
 
             // Properties
@@ -45,34 +51,6 @@ Shader "Custom/Ray Marching Fluid"
             float3 scattering_coefficients;
             float3 sun_direction;
 
-            // Auxiliary functions
-            float total_density_along_rayOS (float3 position, float3 direction, float step_size)
-            {
-                // Initializing the auxiliary variables
-                float total_density = 0;
-
-                // Raymarching through object space
-                [loop]
-                for(int i = 0; i < steps_amount; i++)
-                {
-                    // Computing the current position
-                    float3 current_position = position + step_size * i * direction;
-
-                    // If the current position left the cube boundaries, break
-                    if(any(abs(current_position) > 0.5f + EPSILON))
-                        break;
-
-                    // Sampling the texture at the current position mapped to UV range [0,1]
-                    float sampled_density = SAMPLE_TEXTURE3D(_DensityMap, sampler_DensityMap, current_position + 0.5).x
-                        * step_size * density_multiplier;
-
-                    // Adding the sampled density to the total density
-                    total_density += sampled_density;
-                }
-
-                return total_density;
-            }
-            
             // Vertex Shader
             Varyings vert (Attributes input)
             {
@@ -87,7 +65,41 @@ Shader "Custom/Ray Marching Fluid"
                 
                 return output;
             }
+            
+            // Given a position in OS, returns the density at the given position
+            float sample_density(float3 positionOS)
+            {
+                return SAMPLE_TEXTURE3D(_DensityMap, sampler_DensityMap, positionOS + 0.5f);
+            }
 
+            // Given a ray in object space, computes the total fluid density along the ray
+            float total_density_along_rayOS (Ray ray, float step_size)
+            {
+                // Initializing the auxiliary variables
+                float total_density = 0;
+
+                // Raymarching through object space
+                [loop]
+                for(int i = 0; i < steps_amount; i++)
+                {
+                    // Computing the current position
+                    float3 current_position = ray.origin + step_size * i * ray.direction;
+
+                    // If the current position left the cube boundaries, break
+                    if(any(abs(current_position) > 0.5f + EPSILON))
+                        break;
+
+                    // Sampling the texture at the current position mapped to UV range [0,1]
+                    float sampled_density = sample_density(current_position).x
+                        * step_size * density_multiplier;
+
+                    // Adding the sampled density to the total density
+                    total_density += sampled_density;
+                }
+
+                return total_density;
+            }
+            
             // Fragment shader
             float4 frag (Varyings input) : SV_Target
             {
@@ -99,29 +111,36 @@ Shader "Custom/Ray Marching Fluid"
                 float step_size = sqrt(3.0f) / steps_amount;
                 float internal_step_size = sqrt(3.0f) / internal_steps_amount;
 
-                // Initializing the current position
-                float3 current_positionOS = TransformWorldToObject(input.positionWS);
-
-                // Computing the view direction in world space
-                float3 view_directionOS = TransformWorldToObjectDir(normalize(input.positionWS - GetCameraPositionWS()));
+                // Intializing the view ray
+                Ray view_rayOS;
+                view_rayOS.origin = TransformWorldToObject(input.positionWS);
+                view_rayOS.direction = TransformWorldToObjectDir(normalize(input.positionWS - GetCameraPositionWS()));
 
                 // Raymarching through object space
                 [loop]
                 for(int i = 0; i < steps_amount; i++)
                 {
+                    // Computing the current position
+                    float3 current_positionOS = view_rayOS.origin + i * step_size * view_rayOS.direction;
+                    
                     // If I reached the boundaries of the cube, break
                     if(any(abs(current_positionOS) >= 0.5f + EPSILON))
                         break;
 
-                    // Sampling the density at the given point
-                    float sampled_density = SAMPLE_TEXTURE3D(_DensityMap, sampler_DensityMap, current_positionOS + 0.5f).r
+                    // Sampling the density at the current position
+                    float sampled_density = sample_density(current_positionOS).x
                         * density_multiplier * step_size;
 
                     // Adding the sampled density to the total
                     total_density += sampled_density;
 
+                    // Initializing the sun ray reaching the current position in the fluid
+                    Ray sun_rayOS;
+                    sun_rayOS.origin = current_positionOS;
+                    sun_rayOS.direction = sun_direction;
+
                     // Computing the density along the sun ray
-                    float3 density_along_sun_ray = total_density_along_rayOS(current_positionOS, sun_direction, internal_step_size);
+                    float3 density_along_sun_ray = total_density_along_rayOS(sun_rayOS, internal_step_size);
 
                     // Computing an approximation of the radiance transmitted from the sun to the current point
                     float3 sun_radiance = exp(-density_along_sun_ray * scattering_coefficients);
@@ -134,15 +153,9 @@ Shader "Custom/Ray Marching Fluid"
 
                     // Adding the radiance that reaches the camera from the current position
                     total_radiance += scattered_light_towards_camera * current_radiance;
-                    
-                    // Increasing the current position
-                    current_positionOS += view_directionOS * step_size;
                 }
 
-                if(any(total_radiance >= 1e-2))
-                    return float4(total_radiance, 1.0f);
-                else
-                    return float4(0, 0, 0, 0);
+                return float4(total_radiance, 1.0f);
             }
         
         ENDHLSL

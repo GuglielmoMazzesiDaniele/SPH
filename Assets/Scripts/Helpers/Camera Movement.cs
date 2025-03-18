@@ -6,7 +6,8 @@ public class CameraController : MonoBehaviour
     public float lookSpeed = 2.0f;  
     public float moveSpeed = 10.0f; 
     public float zoomSpeed = 5.0f;  
-    public float panSpeed = 0.5f;   
+    public float panSpeed = 0.5f;
+    public float turboMultiplier = 10.0f;
 
     private Vector3 _rotation;
 
@@ -29,7 +30,7 @@ public class CameraController : MonoBehaviour
 
     #region Handlers
 
-        /// <summary>
+    /// <summary>
     /// If the right button of the mouse is pressed, change the camera rotation
     /// </summary>
     private void HandleMouseLook()
@@ -95,12 +96,14 @@ public class CameraController : MonoBehaviour
         if (Input.GetKey(KeyCode.D)) currentTranslation += transform.right;
         if (Input.GetKey(KeyCode.Q)) currentTranslation -= transform.up;
         if (Input.GetKey(KeyCode.E)) currentTranslation += transform.up;
+        
+        // Verifying if the shift button is pressed
+        if (Input.GetKeyDown(KeyCode.LeftShift)) moveSpeed *= turboMultiplier;
+        if (Input.GetKeyUp(KeyCode.LeftShift)) moveSpeed /= turboMultiplier;
 
         // Applying the translation
         transform.position += moveSpeed * Time.deltaTime * currentTranslation;
     }
 
     #endregion
-
-
 }
