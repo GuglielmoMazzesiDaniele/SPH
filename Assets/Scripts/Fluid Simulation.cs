@@ -35,6 +35,7 @@ public class FluidSimulation : MonoBehaviour
     public bool renderSimulation;
     public RayMarchedFluid rayMarchedFluid;
     public RayMarchedGas rayMarchedGas;
+    public RayMarchedNormals rayMarchedNormals;
     public RayMarchedCube rayMarchedCube;
     public DensitySlice densitySlice;
     
@@ -392,6 +393,9 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetFloat(_viscosityID, viscosity);
     }
 
+    /// <summary>
+    /// Initializes the density map used by multiple rendering materials.
+    /// </summary>
     private void InitializeDensityMap()
     {
         // Initializing the density map
@@ -408,15 +412,24 @@ public class FluidSimulation : MonoBehaviour
             // Setting the wrap mode
             wrapMode = TextureWrapMode.Clamp
         };
-        
+
         // Creating the density map
         _densityMap.Create();
-        
+
         // Assigning the map to every material that uses it
         densitySlice.material.SetTexture(_densityMapPropertyID, _densityMap);
         rayMarchedGas.material.SetTexture(_densityMapPropertyID, _densityMap);
         rayMarchedFluid.material.SetTexture(_densityMapPropertyID, _densityMap);
-        
+        rayMarchedNormals.material.SetTexture(_densityMapPropertyID, _densityMap);
+    }
+
+    /// <summary>
+    /// Updates the global variables shared between multiple shaders.
+    /// </summary>
+    private void UpdateShaderGlobalVariables()
+    {
+        // Updating the floor global matrix
+        Shader.SetGlobalMatrix(_floorWorldToObjectID, floorTransform.worldToLocalMatrix);
     }
     
     #endregion
@@ -460,10 +473,6 @@ public class FluidSimulation : MonoBehaviour
     /// </summary>
     private void Update()
     {
-        // TODO: Move elsewhere
-        rayMarchedCube.material.SetMatrix(_floorWorldToObjectID, floorTransform.worldToLocalMatrix);
-        rayMarchedFluid.material.SetMatrix(_floorWorldToObjectID, floorTransform.worldToLocalMatrix);
-        
         // Handling possible user's inputs
         HandleInputs();
         
@@ -474,6 +483,7 @@ public class FluidSimulation : MonoBehaviour
         // Updating the scale of the renderings
         rayMarchedFluid.transform.localScale = boundsSize;
         rayMarchedGas.transform.localScale = boundsSize;
+        rayMarchedNormals.transform.localScale = boundsSize;
         
         // Updating the variables related to the kernels
         UpdateKernelVariables();
@@ -483,6 +493,9 @@ public class FluidSimulation : MonoBehaviour
         
         // Setting all the constants, in case they were changed via GUI
         UpdateComputeShaderVariables();
+        
+        // Updating the shaders global variables
+        UpdateShaderGlobalVariables();
         
         // Computing a smaller delta time per substep
         var deltaTime = Mathf.Min(Time.deltaTime, 1 / 60.0f);

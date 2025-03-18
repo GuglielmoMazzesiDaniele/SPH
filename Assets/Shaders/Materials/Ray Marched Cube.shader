@@ -23,7 +23,7 @@ Shader "Custom/Ray Marched Cube"
             float IOR;
 
             // Variables
-            float4x4 floor_world_to_object;
+            // float4x4 floor_world_to_object;
 
             // Structs
             
@@ -59,7 +59,7 @@ Shader "Custom/Ray Marched Cube"
                 float3 ray_direction = TransformWorldToObjectDir(input.view_directionWS);
 
                 // Initializing the color
-                float4 final_color = float4(0, 0, 0, 0);
+                float3 final_color = 0;
 
                 // Initializing the position
                 float3 current_position = input.positionOS;
@@ -95,7 +95,7 @@ Shader "Custom/Ray Marched Cube"
                         normal = normalize(current_position);
                     
                         // Applying a basic lambertian shading to the sphere
-                        final_color = float4(1, 0, 0, 1) * smoothstep(0, 0.75, dot(ray_direction, -normal));
+                        final_color = float3(1, 0, 0) * smoothstep(0, 0.75, dot(ray_direction, -normal));
                         break;
                     }
 
@@ -122,18 +122,11 @@ Shader "Custom/Ray Marched Cube"
 
                         // Initializing the ray
                         Ray exiting_ray;
-                        exiting_ray.origin = TransformObjectToWorld(current_position - 1e-2 * ray_direction);
-                        exiting_ray.direction = TransformObjectToWorldDir(refracted_direction);
+                        exiting_ray.origin = current_position;
+                        exiting_ray.direction = refracted_direction; 
 
-                        // Computing the UV coordinates of intersection with the floor quad
-                        float2 floor_uv = ray_floor_intersection(exiting_ray, floor_world_to_object);
-
-                        // Verifying that the UVs are valid
-                        if(all(floor_uv == -1))
-                            break;
-                        
                         // Printing the UV coordinates
-                        final_color = floor_uv_to_color(floor_uv);
+                        final_color = sample_environment(exiting_ray); 
 
                         // Exiting the raymarching loop
                         break;
@@ -142,7 +135,7 @@ Shader "Custom/Ray Marched Cube"
                     current_position += ray_direction * (sqrt(3) / STEPS_AMOUNT);
                 }
                 
-                return final_color;
+                return float4(final_color, 1);
             }
             ENDHLSL
         }

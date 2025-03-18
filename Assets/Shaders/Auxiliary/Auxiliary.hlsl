@@ -7,6 +7,9 @@ struct Ray
     float3 direction;
 };
 
+// GLOBAL VARIABLES
+float4x4 floor_world_to_object;
+
 // FUNCTIONS
 
 // Given a pair of UV coordinates, generate a random value
@@ -109,8 +112,20 @@ float3 cube_closest_face_normal(float3 position)
     return float3(0, 0, sign(position.z));
 }
 
-// Given a ray in WS, sample the skybox of the camera
-float3 sample_skybox(Ray ray)
+// Given a ray in OS, sample light received from the environment
+float3 sample_environment(Ray ray)
 {
-    
+    // Converting the Ray in WS
+    ray.origin = TransformObjectToWorld(ray.origin);
+    ray.direction = normalize(TransformObjectToWorldDir(ray.direction));
+
+    // Trying to sample the floor
+    float2 floor_uv = ray_floor_intersection(ray, floor_world_to_object);
+
+    // If the ray intersect the floor, returns it color
+    if(all(floor_uv != -1))
+        return floor_uv_to_color(floor_uv);
+                
+    // Sampling the sky
+    return SAMPLE_TEXTURECUBE(_GlossyEnvironmentCubeMap, sampler_GlossyEnvironmentCubeMap, ray.direction).rgb;
 }

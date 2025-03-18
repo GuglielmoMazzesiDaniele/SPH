@@ -1,4 +1,4 @@
-Shader "Custom/Ray Marched Fluid"
+Shader "Custom/Ray Marched Normals"
 {
     Properties
     {
@@ -57,8 +57,7 @@ Shader "Custom/Ray Marched Fluid"
             float density_multiplier;
             float refraction_index;
             float surface_density_threshold;
-            float3 absorption_coefficients;
-
+            
             // Vertex Shader
             Varyings vert (Attributes input)
             {
@@ -114,47 +113,13 @@ Shader "Custom/Ray Marched Fluid"
                     min(boundaries_distance.y, boundaries_distance.z));
 
                 // Computing the weight of the face normal based on the distance to it
-                float face_weight = (1 - smoothstep(0, max_boundaries_smoothing_distance, min_boundaries_distance));
+                float face_weight = 1 - smoothstep(0, max_boundaries_smoothing_distance, min_boundaries_distance);
 
                 // Computing the interpolated normal between volume and face normal
                 float3 interpolated_normal = normalize(volume_normal * (1 - face_weight)
                     + face_normal * face_weight);
                 
                 return interpolated_normal;
-            }
-
-            // Given a ray in object space, computes the total fluid density along the ray
-            float total_density_along_ray (Ray ray, float step_size)
-            {
-                // Initializing the auxiliary variables
-                float total_density = 0;
-
-                // Raymarching through object space
-                [loop]
-                for(int i = 0; i < steps_amount; i++)
-                {
-                    // Computing the current position
-                    float3 current_position = ray.origin + step_size * i * ray.direction;
-
-                    // If the current position left the cube boundaries, break
-                    if(any(abs(current_position) > 0.5f + EPSILON))
-                        break;
-
-                    // Sampling the texture at the current position mapped to UV range [0,1]
-                    float sampled_density = sample_density(current_position)
-                        * step_size * density_multiplier;
-
-                    // Adding the sampled density to the total density
-                    total_density += sampled_density;
-                }
-
-                return total_density;
-            }
-
-            // Given a density, returns the transmitted light along the density
-            float3 transmittance_decay (float density)
-            {
-                return exp(-density * absorption_coefficients);
             }
 
             // Given a normal and an incident direction in the same hemisphere, returns the fresnel's refraction
@@ -229,8 +194,6 @@ Shader "Custom/Ray Marched Fluid"
 
                 // Auxiliary variables
                 float3 final_color = 0;
-                float3 remaining_transmittance = 1;
-                float path_density = 0;
                 bool is_submerged = false;
                 int current_surface_collisions = 0;
                 
@@ -241,9 +204,6 @@ Shader "Custom/Ray Marched Fluid"
                     // Sampling the density at the current position
                     float sampled_density = sample_density(ray_marching_position);
 
-                    // Adding the sampled density to the accumulated density along current path
-                    path_density += sampled_density * density_multiplier * step_size;
-     
                     // Verify if I reached the fluid surface, either from inside or outside of it
                     if((sampled_density >= surface_density_threshold && !is_submerged)
                         || (sampled_density <= surface_density_threshold && is_submerged))
@@ -254,14 +214,11 @@ Shader "Custom/Ray Marched Fluid"
                         // Flipping flag
                         is_submerged = !is_submerged;
 
-                        // Reducing the transmittance by the amount of density the ray passed through
-                        remaining_transmittance *= transmittance_decay(path_density);
-
-                        // Resetting the collected density
-                        path_density = 0;
-                         
                         // Computing the normal at the current point
                         float3 surface_normal = compute_surface_normal(ray_marching_position);
+
+                        // Storing the final color as the current surface normal
+                        final_color = (surface_normal + 1) * 0.5;
 
                         // If I reached the maximum surface collisions, break
                         if(current_surface_collisions >= max_surface_collisions)
@@ -280,47 +237,8 @@ Shader "Custom/Ray Marched Fluid"
                         // If refraction is possible, approximated lesser path and follow greater one
                         else
                         {
-                            // Computing the density along the reflected ray
-                            float density_along_reflected = total_density_along_ray(collision_info.reflected_ray,
-                                step_size * 10 * (current_surface_collisions + 1));
-                            
-                            // Computing the density along the
-                            float density_along_refracted = total_density_along_ray(collision_info.refracted_ray,
-                                step_size * 10 * (current_surface_collisions + 1));
-
-                            // Deciding which path to follow based on the intensity of the path and the total fluid
-                            // density it will traverse
-                            bool is_refracted_path_better = density_along_refracted * collision_info.refracted_intensity
-                                > density_along_reflected * collision_info.reflected_intensity;
-                            
-                            // If the refracted path is better, change the direction of the travelling ray to follow it.
-                            // Otherwise change the direction to match the reflected path.
-                            if(is_refracted_path_better)
-                            {
-                                // Changing direction to refracted
-                                ray_marching_direction = collision_info.refracted_ray.direction;
-
-                                // Approximating the contribution of the discated reflected path
-                                final_color += sample_environment(collision_info.reflected_ray)
-                                    * remaining_transmittance * transmittance_decay(density_along_reflected)
-                                    * collision_info.reflected_intensity;
-
-                                // Reducing the remaining trasmittance
-                                remaining_transmittance *= collision_info.refracted_intensity;
-                            }
-                            else
-                            {
-                                // Changing direction to refracted
-                                ray_marching_direction = collision_info.reflected_ray.direction;
-
-                                // Approximating the contribution of the discated refracted path
-                                final_color += sample_environment(collision_info.refracted_ray)
-                                    * remaining_transmittance * transmittance_decay(density_along_reflected)
-                                    * collision_info.refracted_intensity;
-
-                                // Reducing the remaining transmittance
-                                remaining_transmittance *= collision_info.reflected_intensity;
-                            }
+                            // Changing the current direction to the reflected direction
+                            ray_marching_direction = collision_info.refracted_ray.direction;
                         }
                     }
                     
@@ -332,20 +250,18 @@ Shader "Custom/Ray Marched Fluid"
                     {
                         // Case in which the ray was travelling in the water
                         if(is_submerged)
-                            remaining_transmittance *= transmittance_decay(path_density);
+                        {
+                            final_color = (compute_surface_normal(ray_marching_position) + 1) * 0.5;
+                        }
+                        else
+                        {
+                            discard;
+                        }
                         
                         break;
                     }
                 }
 
-                // Initializing the last ray
-                Ray last_ray;
-                last_ray.origin = ray_marching_position;
-                last_ray.direction = ray_marching_direction;
-
-                // Approximating the light incoming from the last ray
-                final_color += sample_environment(last_ray) * remaining_transmittance;
-                
                 return float4(final_color, 1);
             }
             
