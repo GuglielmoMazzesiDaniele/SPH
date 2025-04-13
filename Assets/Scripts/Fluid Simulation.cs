@@ -25,6 +25,7 @@ public class FluidSimulation : MonoBehaviour
     public float restDensity;
     public float stiffness;
     public float viscosity;
+    public float nearDensity;
     public uint simulationSubSteps;
     public float slowMotionCoefficient;
     
@@ -36,7 +37,6 @@ public class FluidSimulation : MonoBehaviour
     public RayMarchedFluid rayMarchedFluid;
     public RayMarchedGas rayMarchedGas;
     public RayMarchedNormals rayMarchedNormals;
-    public RayMarchedCube rayMarchedCube;
     public DensitySlice densitySlice;
     
     [Header("Density Map")] 
@@ -66,6 +66,7 @@ public class FluidSimulation : MonoBehaviour
     private Vector3[] _predictedPositions;
     private Vector3[] _velocities;
     private float[] _densities;
+    private float[] _nearDensities;
     
     // Bounds related fields
     private Vector3 _halfBoundsSize;
@@ -104,11 +105,13 @@ public class FluidSimulation : MonoBehaviour
     private readonly int _stiffnessID = Shader.PropertyToID("stiffness");
     private readonly int _restDensityID = Shader.PropertyToID("rest_density");
     private readonly int _viscosityID = Shader.PropertyToID("viscosity");
+    private readonly int _nearDensityID = Shader.PropertyToID("near_density");
     
     private readonly int _positionsBufferID = Shader.PropertyToID("positions");
     private readonly int _predictedPositionsBufferID = Shader.PropertyToID("predicted_positions");
     private readonly int _velocitiesBufferID = Shader.PropertyToID("velocities");
     private readonly int _densitiesBufferID = Shader.PropertyToID("densities");
+    private readonly int _nearDensitiesBufferID = Shader.PropertyToID("near_densities");
     
     private readonly int _spatialKeysBufferID = Shader.PropertyToID("spatial_keys");
     private readonly int _spatialIndicesBufferID = Shader.PropertyToID("spatial_indices");
@@ -129,6 +132,7 @@ public class FluidSimulation : MonoBehaviour
     private ComputeBuffer _predictedPositionsBuffer;
     private ComputeBuffer _velocitiesBuffer;
     private ComputeBuffer _densitiesBuffer;
+    private ComputeBuffer _nearDensitiesBuffer;
     private ComputeBuffer _auxiliaryPositionsBuffer;
     private ComputeBuffer _auxiliaryPredictedPositionsBuffer;
     private ComputeBuffer _auxiliaryVelocitiesBuffer;
@@ -144,7 +148,7 @@ public class FluidSimulation : MonoBehaviour
     private int _spatialKeysKernelID;
     private int _reorderKernelID;
     private int _copyAuxiliaryInMainKernelID;
-    private int _densityKernelID;
+    private int _densitiesKernelID;
     private int _positionAndVelocityKernelID;
     private int _updateDensityMapKernelID;
 
@@ -272,6 +276,7 @@ public class FluidSimulation : MonoBehaviour
         _predictedPositions = new Vector3[_particlesAmount];
         _velocities = new Vector3[_particlesAmount];
         _densities = new float[_particlesAmount];
+        _nearDensities = new float[_particlesAmount];
         
         // Setting the positions equal to the one provided by the fluid spawner
         _positions = _fluidSpawner.GetSpawnPositions();
@@ -290,6 +295,7 @@ public class FluidSimulation : MonoBehaviour
         _velocitiesBuffer = new ComputeBuffer(_particlesAmount, 3 * sizeof(float));
         _auxiliaryVelocitiesBuffer = new ComputeBuffer(_particlesAmount, 3 * sizeof(float));
         _densitiesBuffer = new ComputeBuffer(_particlesAmount, sizeof(float));
+        _nearDensitiesBuffer = new ComputeBuffer(_particlesAmount, sizeof(float));
         
         // Filling the buffer
         _positionsBuffer.SetData(_positions);
@@ -306,7 +312,7 @@ public class FluidSimulation : MonoBehaviour
         _copyAuxiliaryInMainKernelID = _simulationComputeShader.FindKernel("copy_auxiliary_in_main");
         _predictedPositionKernelID = _simulationComputeShader.FindKernel("update_predicted_positions");
         _spatialKeysKernelID = _simulationComputeShader.FindKernel("update_spatial_keys");
-        _densityKernelID = _simulationComputeShader.FindKernel("update_density");
+        _densitiesKernelID = _simulationComputeShader.FindKernel("update_densities");
         _positionAndVelocityKernelID = _simulationComputeShader.FindKernel("update_position_and_velocity");
         _updateDensityMapKernelID = _simulationComputeShader.FindKernel("update_density_map");
             
@@ -337,17 +343,19 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetBuffer(_copyAuxiliaryInMainKernelID, _auxiliaryVelocitiesBufferID, _auxiliaryVelocitiesBuffer);
         
         // Setting the buffers for the density kernel
-        _simulationComputeShader.SetBuffer(_densityKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
-        _simulationComputeShader.SetBuffer(_densityKernelID, _densitiesBufferID, _densitiesBuffer);
-        _simulationComputeShader.SetBuffer(_densityKernelID, _spatialKeysBufferID, _spatialGrid.SpatialKeysBuffer);
-        _simulationComputeShader.SetBuffer(_densityKernelID, _spatialIndicesBufferID, _spatialGrid.SpatialIndicesBuffer);
-        _simulationComputeShader.SetBuffer(_densityKernelID, _spatialOffsetsBufferID, _spatialGrid.SpatialOffsetsBuffer);
+        _simulationComputeShader.SetBuffer(_densitiesKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
+        _simulationComputeShader.SetBuffer(_densitiesKernelID, _densitiesBufferID, _densitiesBuffer);
+        _simulationComputeShader.SetBuffer(_densitiesKernelID, _nearDensitiesBufferID, _nearDensitiesBuffer);
+        _simulationComputeShader.SetBuffer(_densitiesKernelID, _spatialKeysBufferID, _spatialGrid.SpatialKeysBuffer);
+        _simulationComputeShader.SetBuffer(_densitiesKernelID, _spatialIndicesBufferID, _spatialGrid.SpatialIndicesBuffer);
+        _simulationComputeShader.SetBuffer(_densitiesKernelID, _spatialOffsetsBufferID, _spatialGrid.SpatialOffsetsBuffer);
         
         // Setting the buffers for the delta velocity kernel
         _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _positionsBufferID, _positionsBuffer);
         _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _predictedPositionsBufferID, _predictedPositionsBuffer);
         _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _velocitiesBufferID, _velocitiesBuffer);
         _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _densitiesBufferID, _densitiesBuffer);
+        _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _nearDensitiesBufferID, _nearDensitiesBuffer);
         _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _spatialKeysBufferID, _spatialGrid.SpatialKeysBuffer);
         _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _spatialIndicesBufferID, _spatialGrid.SpatialIndicesBuffer);
         _simulationComputeShader.SetBuffer(_positionAndVelocityKernelID, _spatialOffsetsBufferID, _spatialGrid.SpatialOffsetsBuffer);
@@ -391,6 +399,7 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetFloat(_restDensityID, restDensity);
         _simulationComputeShader.SetFloat(_stiffnessID, stiffness);
         _simulationComputeShader.SetFloat(_viscosityID, viscosity);
+        _simulationComputeShader.SetFloat(_nearDensityID, nearDensity);
     }
 
     /// <summary>
@@ -460,6 +469,7 @@ public class FluidSimulation : MonoBehaviour
         _predictedPositionsBuffer?.Release();
         _velocitiesBuffer?.Release();
         _densitiesBuffer?.Release();
+        _nearDensitiesBuffer?.Release();
         _auxiliaryPositionsBuffer?.Release();
         _auxiliaryPredictedPositionsBuffer?.Release();
         _auxiliaryVelocitiesBuffer?.Release();
@@ -512,37 +522,37 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetVector(_gravityAccelerationID, stepDeltaTime * gravity * new Vector3(0, -1, 0));
         
         // Declaring the const amount of threads for linear scan
-        const float linear_threads_amount = 512.0f;
+        const float linearThreadsAmount = 512.0f;
         
         // Running multiple simulation steps 
         for (var i = 0; i < simulationSubSteps; i++)
         {
             // Dispatching the predicted position kernel
             _simulationComputeShader.Dispatch(_predictedPositionKernelID, 
-                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
+                Mathf.CeilToInt(_particlesAmount / linearThreadsAmount), 1, 1);
             
             // Dispatching the spatial keys kernel
             _simulationComputeShader.Dispatch(_spatialKeysKernelID, 
-                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
+                Mathf.CeilToInt(_particlesAmount / linearThreadsAmount), 1, 1);
             
             // Updating the spatial data
             _spatialGrid.Update();
     
             // Dispatching the reorder kernel
             _simulationComputeShader.Dispatch(_reorderKernelID, 
-                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
+                Mathf.CeilToInt(_particlesAmount / linearThreadsAmount), 1, 1);
 
             // Dispatching the copy auxiliary in main kernel
             _simulationComputeShader.Dispatch(_copyAuxiliaryInMainKernelID, 
-                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
+                Mathf.CeilToInt(_particlesAmount / linearThreadsAmount), 1, 1);
             
             // Dispatching the density kernel
-            _simulationComputeShader.Dispatch(_densityKernelID, 
-                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
+            _simulationComputeShader.Dispatch(_densitiesKernelID, 
+                Mathf.CeilToInt(_particlesAmount / linearThreadsAmount), 1, 1);
             
             // Dispatching the delta velocities kernel
             _simulationComputeShader.Dispatch(_positionAndVelocityKernelID,
-                Mathf.CeilToInt(_particlesAmount / linear_threads_amount), 1, 1);
+                Mathf.CeilToInt(_particlesAmount / linearThreadsAmount), 1, 1);
         }
 
         // Updating the density map
@@ -593,6 +603,7 @@ public class FluidSimulation : MonoBehaviour
             _positionsBuffer.SetData(_positions);
             _predictedPositionsBuffer.SetData(_predictedPositions);
             _densitiesBuffer.SetData(_densities);
+            _nearDensitiesBuffer.SetData(_nearDensities);
             _velocitiesBuffer.SetData(_velocities);
         }
         

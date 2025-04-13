@@ -3,7 +3,7 @@
 #pragma kernel update_spatial_keys
 #pragma kernel reorder_buffers
 #pragma kernel copy_auxiliary_in_main
-#pragma kernel update_density
+#pragma kernel update_densities
 #pragma kernel update_position_and_velocity
 #pragma kernel update_density_map
 
@@ -17,6 +17,7 @@ RWStructuredBuffer<float3> positions;
 RWStructuredBuffer<float3> predicted_positions;
 RWStructuredBuffer<float3> velocities;
 RWStructuredBuffer<float> densities;
+RWStructuredBuffer<float> near_densities;
 
 // Spatial Hashing Grid's buffers
 RWStructuredBuffer<uint> spatial_keys;
@@ -73,6 +74,7 @@ float3 gravity_acceleration;
 float particle_mass;
 float rest_density;
 float stiffness;
+float near_density;
 float viscosity;
 float collision_damping;
 float3 bounds_size;
@@ -112,6 +114,18 @@ float spiky_gradient(float distance)
 float viscosity_laplacian(float distance)
 {
     return viscosity_laplacian_first_term * (kernel_radius - distance);
+}
+
+// Computes the influence at the given distance using the kernel: (1 - distance / radius) ^ 2
+float exponential_falloff(float distance)
+{
+    return pow(1 - distance / kernel_radius, 2);
+}
+
+// Computes the gradient of the exponential falloff kernel at the given distance
+float exponential_falloff_gradient(float distance)
+{
+    return - 2 / kernel_radius * (1 - distance / kernel_radius);
 }
 
 // Resolve particles collision with simulation's bounds
@@ -170,6 +184,23 @@ float calculate_shared_pressure(float first_density, float second_density)
     return (first_pressure + second_pressure) / 2;
 }
 
+// Converts given near density into near pressure
+float convert_near_density_to_near_pressure(float density)
+{
+    return near_density * pow(density, 2);
+}
+
+// Calculate the shared near pressure between two near densities
+float calculate_shared_near_pressure(float first_near_density, float second_near_density)
+{
+    // Converting both densities to pressure 
+    float first_near_pressure = convert_near_density_to_near_pressure(first_near_density);
+    float second_near_pressure = convert_near_density_to_near_pressure(second_near_density);
+
+    // Computing the pressure that respects Newton's Third Law of Motion (as explained by Sebastian Lague)
+    return (first_near_pressure + second_near_pressure) / 2;
+}
+
 // Given a position in world space, returns its corresponding spatial grid's hash value
 int3 position_to_cell_coords(float3 position)
 {
@@ -200,7 +231,7 @@ uint hash_cell(int3 cell_coords)
 }
 
 // Given a position in world space, returns the density at the position
-float3 calculate_density_at_position(float3 position)
+float calculate_density_at_position(float3 position)
 {
     // Computing the coordinates of the grid cell containing the target particle
     int3 target_cell_coords = position_to_cell_coords(position);
@@ -245,6 +276,54 @@ float3 calculate_density_at_position(float3 position)
     }
 
     return density;
+}
+
+// Given a position in world space, returns the near density at the position
+float calculate_near_density_at_position(float3 position)
+{
+    // Computing the coordinates of the grid cell containing the target particle
+    int3 target_cell_coords = position_to_cell_coords(position);
+
+    // Initializing the near density of the target particle
+    float near_density = 0.0f;
+    
+    // Neighbours search
+    for(int i = 0; i < 27; i++)
+    {
+        // Computing the current cell coordinates
+        int3 current_cell_coords = target_cell_coords + cell_offsets_3D[i];
+        
+        // Computing the key of the central cell + the current offset
+        uint current_cell_key = hash_cell(current_cell_coords);
+        
+        // Iterating all neighbours within the current cell
+        for(uint current_particle_index = spatial_offsets[current_cell_key];
+            current_particle_index < particles_amount && spatial_keys[current_particle_index] == current_cell_key;
+            current_particle_index++)
+        {
+            // Storing the predicted position of the current particle
+            float3 current_particle_pred_pos = predicted_positions[current_particle_index];
+            
+            // Verifying that the current particle actually belongs to the current cell
+            if(!are_int3_equal(current_cell_coords, position_to_cell_coords(current_particle_pred_pos)))
+                continue;
+            
+            // Computing the vector between the current particle and the target
+            float3 current_to_target = current_particle_pred_pos - position;
+    
+            // Computing the squared distance
+            float sqr_distance = dot(current_to_target, current_to_target);
+    
+            // If the particle is outside kernel radius, continue
+            if(sqr_distance >= sqr_kernel_radius)
+                continue;
+    
+            // Adding the current particle influence to the target particle near density
+            near_density += particle_mass * exponential_falloff(sqrt(sqr_distance));
+        }
+    }
+
+    return near_density;
 }
 
 [numthreads(thread_group_size, 1, 1)]
@@ -314,7 +393,7 @@ void update_spatial_keys(uint target_particle_index : SV_DispatchThreadID)
 }
 
 [numthreads(thread_group_size, 1, 1)]
-void update_density(uint target_particle_index : SV_DispatchThreadID)
+void update_densities(uint target_particle_index : SV_DispatchThreadID)
 {
     // Apply the process only using valid ids
     if(target_particle_index >= particles_amount)
@@ -322,6 +401,10 @@ void update_density(uint target_particle_index : SV_DispatchThreadID)
     
     // Updating target particle density
     densities[target_particle_index] = calculate_density_at_position(predicted_positions[target_particle_index]);
+
+    // Updating target particle near density
+    near_densities[target_particle_index] =
+        calculate_near_density_at_position(predicted_positions[target_particle_index]);
 }
 
 [numthreads(thread_group_size, 1, 1)]
@@ -338,6 +421,7 @@ void update_position_and_velocity(uint target_particle_index : SV_DispatchThread
     float3 target_particle_pred_pos = predicted_positions[target_particle_index];
     float3 target_particle_velocity = velocities[target_particle_index];
     float target_particle_density = densities[target_particle_index];
+    float target_particle_near_density = near_densities[target_particle_index];
 
     // Computing the coordinates of the grid cell containing the target particle
     int3 target_cell_coords = position_to_cell_coords(target_particle_pred_pos);
@@ -391,23 +475,43 @@ void update_position_and_velocity(uint target_particle_index : SV_DispatchThread
             // Storing the current particle density
             float current_particle_density = densities[current_particle_index];
 
+            // Storing the current particle near density
+            float current_particle_near_density = near_densities[current_particle_index];
+
+            // Computing the viscosity force
+            float3 viscosity_force = particle_mass * viscosity_influence * viscosity * velocities_difference;
+
             // PRESSURE
 
             // Computing the direction between the current particle and the point of interest
             float3 pressure_direction = distance == 0 ? float3(1, 0, 0) : diff_vector / distance;
 
             // Evaluating the slope of the kernel at the given distance
-            float kernel_slope = spiky_gradient(distance);
+            float pressure_kernel_slope = spiky_gradient(distance);
         
             // Computing the shared pressure force
             float shared_pressure = calculate_shared_pressure(current_particle_density, target_particle_density);
 
+            // Computing the pressure force
+            float3 pressure_force = particle_mass * shared_pressure * pressure_kernel_slope * pressure_direction;
+
+            // NEAR PRESSURE
+
+            // Evaluating the slope of the kernel at the given distance
+            float near_pressure_kernel_slope = exponential_falloff_gradient(distance);
+
+            // Computing the shared near pressure force
+            float shared_near_pressure = calculate_shared_pressure(current_particle_near_density,
+                target_particle_near_density);
+
+            // Computing the near pressure force
+            float3 near_pressure_force = particle_mass * shared_near_pressure
+                * -near_density * pressure_direction;
+
             // FINAL FORCE
 
             // Adding the result to the force
-            internal_force += (particle_mass * viscosity_influence * viscosity * velocities_difference
-                + particle_mass * shared_pressure * kernel_slope * pressure_direction)
-                / current_particle_density;
+            internal_force += (viscosity_force + pressure_force + near_pressure_force) / current_particle_density;
         }
     }
 
