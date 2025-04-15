@@ -101,7 +101,8 @@ public class FluidSimulation : MonoBehaviour
     private readonly int _poly6NormalizationID = Shader.PropertyToID("poly6_normalization");
     private readonly int _spikyGradientFirstTermID = Shader.PropertyToID("spiky_gradient_first_term");
     private readonly int _viscosityLaplacianFirstTermID = Shader.PropertyToID("viscosity_laplacian_first_term");
-    
+
+    private readonly int _particleMassID = Shader.PropertyToID("particle_mass");
     private readonly int _stiffnessID = Shader.PropertyToID("stiffness");
     private readonly int _restDensityID = Shader.PropertyToID("rest_density");
     private readonly int _viscosityID = Shader.PropertyToID("viscosity");
@@ -251,7 +252,7 @@ public class FluidSimulation : MonoBehaviour
     private void UpdateBoundsVariables()
     {
         // Computing the maximum particles coordinates per axis
-        _halfBoundsSize = boundsSize / 2 - Vector3.one * particleRadius;
+        _halfBoundsSize = boundsSize / 2;
     }
     
     /// <summary>
@@ -386,6 +387,7 @@ public class FluidSimulation : MonoBehaviour
         
         // Setting ComputeShader's floats
         _simulationComputeShader.SetFloat(_collisionDampingID, collisionDamping);
+        _simulationComputeShader.SetFloat(_particleMassID, particleMass);
         
         _simulationComputeShader.SetFloat(_gravityID, gravity);
         
@@ -489,8 +491,17 @@ public class FluidSimulation : MonoBehaviour
         // If the simulation is not running, do no execute simulation step
         if (!_isSimulationPlaying)
             return;
+        
+        // Executing a simulation step
+        ExecuteSimulationStep();
+    }
 
-        // Updating the scale of the renderings
+    /// <summary>
+    /// Executes a simulation step
+    /// </summary>
+    private void ExecuteSimulationStep()
+    {
+                // Updating the scale of the renderings
         rayMarchedFluid.transform.localScale = boundsSize;
         rayMarchedGas.transform.localScale = boundsSize;
         rayMarchedNormals.transform.localScale = boundsSize;
@@ -600,11 +611,15 @@ public class FluidSimulation : MonoBehaviour
         // Resetting the simulation
         if (Input.GetKeyDown(KeyCode.R))
         {
+            // Resetting the particles data
             _positionsBuffer.SetData(_positions);
             _predictedPositionsBuffer.SetData(_predictedPositions);
             _densitiesBuffer.SetData(_densities);
             _nearDensitiesBuffer.SetData(_nearDensities);
             _velocitiesBuffer.SetData(_velocities);
+            
+            // Updating the data
+            ExecuteSimulationStep();
         }
         
         // Disabling or enabling slow motion

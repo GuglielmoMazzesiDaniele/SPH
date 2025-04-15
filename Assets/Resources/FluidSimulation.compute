@@ -119,13 +119,13 @@ float viscosity_laplacian(float distance)
 // Computes the influence at the given distance using the kernel: (1 - distance / radius) ^ 2
 float exponential_falloff(float distance)
 {
-    return pow(1 - distance / kernel_radius, 2);
+    return pow(1 - distance / kernel_radius, 1);
 }
 
 // Computes the gradient of the exponential falloff kernel at the given distance
 float exponential_falloff_gradient(float distance)
 {
-    return - 2 / kernel_radius * (1 - distance / kernel_radius);
+    return - (2 / kernel_radius) * pow(1 - distance / kernel_radius, 2 - 1);
 }
 
 // Resolve particles collision with simulation's bounds
