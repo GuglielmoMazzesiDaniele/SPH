@@ -69,8 +69,7 @@ static const int3 cell_offsets_3D[27] =
 // Simulation related fields
 int particles_amount;
 float delta_time;
-float gravity;
-float3 gravity_acceleration;
+float3 external_forces_acceleration;
 float particle_mass;
 float rest_density;
 float stiffness;
@@ -366,10 +365,12 @@ void update_predicted_positions(uint target_particle_index : SV_DispatchThreadID
     float3 target_particle_pos = positions[target_particle_index];
     float3 target_particle_vel = velocities[target_particle_index];
 
+    // Adding to the target particle velocity the external acceleration
+    target_particle_vel += external_forces_acceleration;
+    
     // Computing the predicted position of the target particle
     float3 target_particle_pred_pos = target_particle_pos
-        + target_particle_vel * delta_time
-        + gravity_acceleration * delta_time;
+        + target_particle_vel * delta_time;
 
     // Storing the computed data in the global buffer
     predicted_positions[target_particle_index] = target_particle_pred_pos;
@@ -415,7 +416,7 @@ void update_position_and_velocity(uint target_particle_index : SV_DispatchThread
         return;
     
     // Initializing the new acceleration of the target particle
-    float3 internal_force = 0.0f;
+    float3 internal_forces = 0.0f;
 
     // Storing the target particles predicted position, density and velocity
     float3 target_particle_pred_pos = predicted_positions[target_particle_index];
@@ -511,12 +512,12 @@ void update_position_and_velocity(uint target_particle_index : SV_DispatchThread
             // FINAL FORCE
 
             // Adding the result to the force
-            internal_force += (viscosity_force + pressure_force + near_pressure_force) / current_particle_density;
+            internal_forces += (viscosity_force + pressure_force + near_pressure_force) / current_particle_density;
         }
     }
 
     // Computing the acceleration caused by the density field forces and multiplying it by delta time
-    target_particle_velocity += internal_force / target_particle_density * delta_time + gravity_acceleration;
+    target_particle_velocity += internal_forces / target_particle_density * delta_time + external_forces_acceleration;
     
     // Updating the position and velocity of the particle
     velocities[target_particle_index] = target_particle_velocity;

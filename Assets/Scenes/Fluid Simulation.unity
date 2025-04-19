@@ -850,12 +850,14 @@ MonoBehaviour:
   collisionDamping: 0.95
   kernelRadius: 0.2
   boundsSize: {x: 15, y: 10, z: 12.5}
-  gravity: 10
+  gravityIntensity: 10
+  gravityDirection: {x: 0, y: -1, z: 0}
+  externalForcesIntensity: 10
   restDensity: 650
   stiffness: 300
   viscosity: 1
   nearDensity: 10
-  simulationSubSteps: 10
+  simulationSubSteps: 6
   slowMotionCoefficient: 0.1
   particleMaterial: {fileID: 2100000, guid: 8712fed4b32e58e4cb0d0285d55755b8, type: 2}
   particleSpeedGradient:
@@ -925,7 +927,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnRegions:
-  - particlesAmount: 200000
+  - particlesAmount: 450000
     position: {x: 0, y: 0, z: 0}
     size: {x: 5, y: 5, z: 5}
     boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}

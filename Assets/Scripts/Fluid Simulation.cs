@@ -21,7 +21,9 @@ public class FluidSimulation : MonoBehaviour
     public Vector3 boundsSize;
     
     [Header("Simulation")]
-    public float gravity;
+    public float gravityIntensity;
+    public Vector3 gravityDirection;
+    public float externalForcesIntensity;
     public float restDensity;
     public float stiffness;
     public float viscosity;
@@ -67,6 +69,7 @@ public class FluidSimulation : MonoBehaviour
     private Vector3[] _velocities;
     private float[] _densities;
     private float[] _nearDensities;
+    private Vector3 _externalForcesDirection;
     
     // Bounds related fields
     private Vector3 _halfBoundsSize;
@@ -91,8 +94,7 @@ public class FluidSimulation : MonoBehaviour
     private readonly int _densityMapPropertyID = Shader.PropertyToID("_DensityMap");
     private readonly int _densityMapSizeID = Shader.PropertyToID("density_map_size");
     
-    private readonly int _gravityID = Shader.PropertyToID("gravity");
-    private readonly int _gravityAccelerationID = Shader.PropertyToID("gravity_acceleration");
+    private readonly int _externalForcesAccelerationID = Shader.PropertyToID("external_forces_acceleration");
     
     private readonly int _particleRadiusID = Shader.PropertyToID("particle_radius");
     private readonly int _kernelRadiusID = Shader.PropertyToID("kernel_radius");
@@ -389,8 +391,6 @@ public class FluidSimulation : MonoBehaviour
         _simulationComputeShader.SetFloat(_collisionDampingID, collisionDamping);
         _simulationComputeShader.SetFloat(_particleMassID, particleMass);
         
-        _simulationComputeShader.SetFloat(_gravityID, gravity);
-        
         _simulationComputeShader.SetFloat(_kernelRadiusID, kernelRadius);
         _simulationComputeShader.SetFloat(_sqrKernelRadiusID, _sqrKernelRadius);
         
@@ -500,8 +500,8 @@ public class FluidSimulation : MonoBehaviour
     /// Executes a simulation step
     /// </summary>
     private void ExecuteSimulationStep()
-    {
-                // Updating the scale of the renderings
+    { 
+        // Updating the scale of the renderings
         rayMarchedFluid.transform.localScale = boundsSize;
         rayMarchedGas.transform.localScale = boundsSize;
         rayMarchedNormals.transform.localScale = boundsSize;
@@ -530,7 +530,9 @@ public class FluidSimulation : MonoBehaviour
         
         // Setting the delta time in the GPU
         _simulationComputeShader.SetFloat(_deltaTimeID, stepDeltaTime);
-        _simulationComputeShader.SetVector(_gravityAccelerationID, stepDeltaTime * gravity * new Vector3(0, -1, 0));
+        _simulationComputeShader.SetVector(_externalForcesAccelerationID, 
+            stepDeltaTime * gravityIntensity * gravityDirection 
+            + stepDeltaTime * externalForcesIntensity * _externalForcesDirection);
         
         // Declaring the const amount of threads for linear scan
         const float linearThreadsAmount = 512.0f;
@@ -627,6 +629,25 @@ public class FluidSimulation : MonoBehaviour
         {
             _isSimulationSlowMotion = !_isSimulationSlowMotion;
         }
+        
+        // Resetting the external forces direction
+        _externalForcesDirection = Vector3.zero;
+        
+        // Adding the contribution of every possible external forces direction
+        if (Input.GetKey(KeyCode.UpArrow))
+            _externalForcesDirection += Vector3.forward;
+        
+        if (Input.GetKey(KeyCode.DownArrow))
+            _externalForcesDirection += Vector3.back;
+        
+        if (Input.GetKey(KeyCode.RightArrow))
+            _externalForcesDirection += Vector3.right;
+        
+        if (Input.GetKey(KeyCode.LeftArrow))
+            _externalForcesDirection += Vector3.left;
+        
+        // Normalizing the direction
+        _externalForcesDirection.Normalize();
     }
     
     #endregion
