@@ -928,9 +928,13 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnRegions:
-  - particlesAmount: 400000
-    position: {x: 0, y: 0, z: 0}
-    size: {x: 10, y: 5, z: 5}
+  - particlesAmount: 200000
+    position: {x: 2.3901772, y: 1.0653757, z: 3.5629401}
+    size: {x: 7.528665, y: 3.145894, z: 4.062398}
+    boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}
+  - particlesAmount: 200000
+    position: {x: -3.4340844, y: -2.6801734, z: -3.71523}
+    size: {x: 6.567672, y: 3.2120578, z: 3.9232597}
     boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}
 --- !u!1 &1875467724
 GameObject:
