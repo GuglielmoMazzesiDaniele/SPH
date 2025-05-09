@@ -10,6 +10,8 @@ struct Ray
 // GLOBAL VARIABLES
 float4x4 floor_world_to_object;
 
+
+
 // FUNCTIONS
 
 // Given a pair of UV coordinates, generate a random value
@@ -29,7 +31,7 @@ float4 floor_uv_to_color(float2 uv)
                 
     // First quadrant 
     if(expanded_uv.x >= 0 && expanded_uv.y >= 0)
-        final_color =  float3(0.988, 0.906, 0.784);
+        final_color = float3(0.941, 0.627, 0.294);
     // Second quadrant
     if(expanded_uv.x < 0 && expanded_uv.y >= 0)
         final_color = float3(0.694, 0.761, 0.620);
@@ -38,8 +40,8 @@ float4 floor_uv_to_color(float2 uv)
         final_color = float3(0.980, 0.855, 0.478);
     // Fourth quadrant
     if(expanded_uv.x >= 0 && expanded_uv.y < 0)
-        final_color = float3(0.941, 0.627, 0.294);
-
+        final_color =  float3(0.988, 0.906, 0.784);
+    
     // Chessboard pattern
     if(abs(floor(expanded_uv.x * 100) % 2) == abs(floor(expanded_uv.y * 100) % 2))
     {
@@ -127,5 +129,5 @@ float3 sample_environment(Ray ray)
         return floor_uv_to_color(floor_uv);
                 
     // Sampling the sky
-    return SAMPLE_TEXTURECUBE(_GlossyEnvironmentCubeMap, sampler_GlossyEnvironmentCubeMap, ray.direction).rgb;
+    return float3(1, 1, 1);
 }

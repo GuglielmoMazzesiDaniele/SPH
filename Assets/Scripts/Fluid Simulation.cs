@@ -13,6 +13,7 @@ public class FluidSimulation : MonoBehaviour
     public float particleRadius;
     public float particleMass;
     [Range(0.0f, 1.0f)] public float collisionDamping;
+    public CollisionMode collisionMode;
     
     [Header("Kernel")]
     public float kernelRadius;
@@ -55,7 +56,8 @@ public class FluidSimulation : MonoBehaviour
     
     // Reference to the particles spawner
     private FluidSpawner _fluidSpawner;
-    // Density Map
+    
+    // Reference to the density map
     private RenderTexture _densityMap;
     
     // Fields related to user input
@@ -71,6 +73,13 @@ public class FluidSimulation : MonoBehaviour
     private float[] _nearDensities;
     private Vector3 _externalForcesDirection;
     
+    // Enum defining the type of boundaries
+    public enum CollisionMode
+    {
+        Box = 0,
+        Cylinder = 1
+    }
+    
     // Bounds related fields
     private Vector3 _halfBoundsSize;
     
@@ -84,6 +93,7 @@ public class FluidSimulation : MonoBehaviour
     private readonly int _halfBoundsSizeID = Shader.PropertyToID("half_bounds_size");
     private readonly int _boundsSizeID = Shader.PropertyToID("bounds_size");
     private readonly int _collisionDampingID = Shader.PropertyToID("collision_damping");
+    private readonly int _collisionModeID = Shader.PropertyToID("collision_mode");
 
     private readonly int _worldToLocalMatrixID = Shader.PropertyToID("world_to_local");
     private readonly int _localToWorldMatrixID = Shader.PropertyToID("local_to_world");
@@ -389,6 +399,7 @@ public class FluidSimulation : MonoBehaviour
         
         // Setting ComputeShader's floats
         _simulationComputeShader.SetFloat(_collisionDampingID, collisionDamping);
+        _simulationComputeShader.SetInt(_collisionModeID, (int)collisionMode);
         _simulationComputeShader.SetFloat(_particleMassID, particleMass);
         
         _simulationComputeShader.SetFloat(_kernelRadiusID, kernelRadius);
@@ -622,6 +633,12 @@ public class FluidSimulation : MonoBehaviour
             
             // Updating the data
             ExecuteSimulationStep();
+        }
+        
+        // Capture screenshot
+        if (Input.GetKeyDown(KeyCode.X))
+        {
+            ScreenCapture.CaptureScreenshot("Test.png");
         }
         
         // Disabling or enabling slow motion

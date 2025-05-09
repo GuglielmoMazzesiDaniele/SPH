@@ -10,6 +10,10 @@
 // CONSTANTS
 static const int thread_group_size = 512;
 
+// MACROS
+#define COLLISION_MODE_BOX 0
+#define COLLISION_MODE_CYLINDER 1
+
 // GPU RELATED DATA
 
 // Buffer containing the data of the simulation
@@ -76,6 +80,7 @@ float stiffness;
 float near_density;
 float viscosity;
 float collision_damping;
+int collision_mode;
 float3 bounds_size;
 float3 half_bounds_size;
 float4x4 world_to_local;
@@ -127,8 +132,8 @@ float exponential_falloff_gradient(float distance)
     return - (2 / kernel_radius) * pow(1 - distance / kernel_radius, 2 - 1);
 }
 
-// Resolve particles collision with simulation's bounds
-void resolve_collision(uint target_particle_index)
+// Resolve particles collision with the entire simulation, which is a box
+void resolve_collision_box(uint target_particle_index)
 {
     // Extracting the current particle position and velocity from the buffers and converting in local space
     float3 local_position = mul(world_to_local, float4(positions[target_particle_index], 1.0f)).xyz;
@@ -161,9 +166,73 @@ void resolve_collision(uint target_particle_index)
         local_velocity.z *= -collision_damping;
     }
 
+    // Radius if the internal sphere
+    // float sphere_radius = 3.0f;
+    //
+    // // COLLISION WITH THE SPHERE
+    // if(length(local_position) < sphere_radius)
+    // {
+    //     // Computing the sphere normal
+    //     float3 sphere_normal = normalize(local_position);
+    //     
+    //     // Reflecting the velocity
+    //     local_velocity = reflect(local_velocity, sphere_normal) * collision_damping;
+    //     
+    //     // Computing the sphere normal
+    //     local_position = sphere_radius * sphere_normal;
+    // }
+
     // Converting back in world space
     positions[target_particle_index] = mul(local_to_world, float4(local_position, 1.0f)).xyz;
-    velocities[target_particle_index] = mul(local_to_world, float4(local_velocity, 1.0f)).xyz;
+    velocities[target_particle_index] = mul(local_to_world, float4(local_velocity, 0.0f)).xyz;
+}
+
+// Resolve particles collision with an invisible cylinder placed at the origin
+void resolve_collision_cylinder(uint target_particle_index)
+{
+    // Extracting the current particle position and velocity from the buffers and converting in local space
+    float3 local_position = mul(world_to_local, float4(positions[target_particle_index], 1.0f)).xyz;
+    float3 local_velocity = mul(world_to_local, float4(velocities[target_particle_index], 0.0f)).xyz;
+
+    // Computing the smallest horizontal axis
+    float cylinder_radius = min(half_bounds_size.x, half_bounds_size.z);
+
+    // Resolving collisions
+    if (length(local_position.xz) > cylinder_radius)
+    {
+        // Computing the cylinder normal that intersects the current position
+        float2 normal = normalize(local_position.xz);
+
+        // Clamping the position on the cylinder surface
+        local_position.xz  = normal * cylinder_radius;
+
+        // Reflecting the velocity
+        local_velocity.xz = reflect(local_velocity.xz, normal) * collision_damping;
+    }
+
+    // Vertical collision (Y caps)
+    if (abs(local_position.y) > half_bounds_size.y)
+    {
+        // Clamping the position to the max position on the Y axis based on the sign
+        local_position.y = sign(local_position.y) * half_bounds_size.y;
+        
+        // Applying the collision damping
+        local_velocity.y *= -collision_damping;
+    }
+
+    // Converting back in world space
+    positions[target_particle_index] = mul(local_to_world, float4(local_position, 1.0f)).xyz;
+    velocities[target_particle_index] = mul(local_to_world, float4(local_velocity, 0.0f)).xyz;
+}
+
+// Based on the current simulation configuration, resolve the collision with the boundaries
+void resolve_collision(uint target_particle_index)
+{
+    // Calling the correct function based on the active configuration
+    if(collision_mode == COLLISION_MODE_BOX)
+        resolve_collision_box(target_particle_index);
+    if(collision_mode == COLLISION_MODE_CYLINDER)
+        resolve_collision_cylinder(target_particle_index);
 }
 
 // Converts given density into pressure
@@ -465,22 +534,22 @@ void update_position_and_velocity(uint target_particle_index : SV_DispatchThread
             // Computing the distance
             float distance = sqrt(sqr_distance);
 
-            // VISCOSITY
-        
-            // Computing the viscosity's influence of the current particle
-            float viscosity_influence = viscosity_laplacian(distance);
-
-            // Computing the difference between velocities
-            float3 velocities_difference = velocities[current_particle_index] - target_particle_velocity;
-
             // Storing the current particle density
             float current_particle_density = densities[current_particle_index];
 
             // Storing the current particle near density
             float current_particle_near_density = near_densities[current_particle_index];
 
+            // VISCOSITY
+        
+            // Computing the viscosity's influence of the current particle
+            float viscosity_kernel = viscosity_laplacian(distance);
+
+            // Computing the difference between velocities
+            float3 velocities_difference = velocities[current_particle_index] - target_particle_velocity;
+
             // Computing the viscosity force
-            float3 viscosity_force = particle_mass * viscosity_influence * viscosity * velocities_difference;
+            float3 viscosity_force = particle_mass * viscosity_kernel * viscosity * velocities_difference;
 
             // PRESSURE
 
@@ -488,13 +557,13 @@ void update_position_and_velocity(uint target_particle_index : SV_DispatchThread
             float3 pressure_direction = distance == 0 ? float3(1, 0, 0) : diff_vector / distance;
 
             // Evaluating the slope of the kernel at the given distance
-            float pressure_kernel_slope = spiky_gradient(distance);
+            float pressure_kernel = spiky_gradient(distance);
         
             // Computing the shared pressure force
             float shared_pressure = calculate_shared_pressure(current_particle_density, target_particle_density);
 
             // Computing the pressure force
-            float3 pressure_force = particle_mass * shared_pressure * pressure_kernel_slope * pressure_direction;
+            float3 pressure_force = particle_mass * shared_pressure * pressure_kernel * pressure_direction;
 
             // NEAR PRESSURE
 
