@@ -469,7 +469,7 @@ public class FluidSimulation : MonoBehaviour
         
         // Drawing the simulation bounding box
         Gizmos.color = Color.white;
-        Gizmos.DrawWireCube(new Vector3(0, 0, 0), boundsSize);
+        Gizmos.DrawWireCube(transform.position, boundsSize);
     }
 
     /// <summary>
