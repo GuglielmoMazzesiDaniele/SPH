@@ -1,0 +1,35 @@
+Average FPS per particles count, using our hashing function:
+- 50k: 214.91
+- 100k: 190.64
+- 150k: 151.67
+- 200k: 138.31
+- 300k: 105.77
+- 400k: 84.67
+- 600k: 58.19
+- 800k: 43.6
+- 1kk: 36.65
+- 1.2kk: 31.53
+
+Average FPS per particles count, using simplified hashing function:
+- 50k: 167.67
+- 100k: 119.20
+- 150k: 87.65
+- 200k: 77.4
+- 300k: 46.33
+- 400k: 34.03
+- 600k: 22.4
+- 800k: 17.87
+- 1kk: 12.45
+- 1.2kk: --
+
+Average FPS per particles count, using Morton hashing function:
+- 50k: 202.28
+- 100k: 160.45
+- 150k: 136.06
+- 200k: 11.71
+- 300k: 78.78
+- 400k: 86.45
+- 600k: 43.64
+- 800k: 47.72
+- 1kk: 40.29
+- 1.2kk: 30.93
