@@ -5,7 +5,7 @@ using UnityEngine;
 public class FluidSpawner : MonoBehaviour
 {
     [Header("Spawn Regions")]
-    [SerializeField] public SpawnRegion[] spawnRegions;
+    public SpawnRegion[] spawnRegions;
 
     #region Unity Callback Functions
 

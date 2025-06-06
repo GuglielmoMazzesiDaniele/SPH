@@ -1,10 +1,5 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
+using System.Collections;
 using UnityEngine;
-using UnityEngine.Serialization;
-using UnityEngine.XR;
-using Random = UnityEngine.Random;
-using Vector2 = UnityEngine.Vector2;
 using Vector3 = UnityEngine.Vector3;
 
 public class FluidSimulation : MonoBehaviour
@@ -82,6 +77,9 @@ public class FluidSimulation : MonoBehaviour
     
     // Bounds related fields
     private Vector3 _halfBoundsSize;
+    
+    // Data collection related fields
+    private Coroutine _screenshotRoutine;
     
     // Kernel related fields
     private float _sqrKernelRadius;
@@ -469,7 +467,7 @@ public class FluidSimulation : MonoBehaviour
         
         // Drawing the simulation bounding box
         Gizmos.color = Color.white;
-        Gizmos.DrawWireCube(new Vector3(0, 0, 0), boundsSize);
+        Gizmos.DrawWireCube(transform.position, boundsSize);
     }
 
     /// <summary>
@@ -635,10 +633,23 @@ public class FluidSimulation : MonoBehaviour
             ExecuteSimulationStep();
         }
         
-        // Capture screenshot
+        // Capture single screenshot
         if (Input.GetKeyDown(KeyCode.X))
         {
-            ScreenCapture.CaptureScreenshot("Test.png");
+            ScreenCapture.CaptureScreenshot("Screenshot.png");
+        }
+        
+        // Capture multiple screenshots
+        if (Input.GetKeyDown(KeyCode.Z))
+        {
+            if (_screenshotRoutine == null)
+            {
+                _screenshotRoutine = StartCoroutine(CaptureScreenshotsCoroutine());
+            }
+            else
+            {
+                Debug.Log("Screenshot capture already running.");
+            }
         }
         
         // Disabling or enabling slow motion
@@ -667,5 +678,37 @@ public class FluidSimulation : MonoBehaviour
         _externalForcesDirection.Normalize();
     }
     
+    #endregion
+
+    #region Auxiliary
+
+    /// <summary>
+    /// Coroutine that captures 5 screenshots, for showcasing purposes. 
+    /// </summary>
+    /// <returns>A reference to the coroutine</returns>
+    private IEnumerator CaptureScreenshotsCoroutine()
+    {
+        // Auxiliary variables
+        const int screenshotCount = 7;
+        const float interval = 1.5f; // seconds
+
+        // Capturing the screenshots
+        for (var i = 0; i < screenshotCount; i++)
+        {
+            // Initializing the file name
+            var filename = $"Screenshot_{i + 1}.png";
+            // Taking the screenshot
+            ScreenCapture.CaptureScreenshot(filename);
+            // Printing info on console
+            Debug.Log($"Captured: {filename}");
+
+            // Yielding the coroutine for interval amount of time
+            yield return new WaitForSeconds(interval);
+        }
+        
+        // Resetting when done
+        _screenshotRoutine = null;
+    }
+
     #endregion
 }

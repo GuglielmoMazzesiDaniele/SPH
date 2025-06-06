@@ -298,6 +298,40 @@ uint hash_cell(int3 cell_coords)
     return (local_cell.x + block_size * (local_cell.y + block_size * local_cell.z) + block_hash) % particles_amount;
 }
 
+// Given a cell position in the spatial grid, returns its corresponding hash value mod particles_amount
+uint hash_cell_simple(int3 cell_coords)
+{
+    const uint prime1 = 73856093;
+    const uint prime2 = 19349663;
+    const uint prime3 = 83492791;
+
+    uint hash = (uint)(cell_coords.x * prime1) ^
+                (uint)(cell_coords.y * prime2) ^
+                (uint)(cell_coords.z * prime3);
+
+    return hash % particles_amount;
+}
+
+// Auxiliary function used in the Morton Hasing function.
+uint expand_bits(uint v)
+{
+    v = (v * 0x00010001u) & 0xFF0000FFu;
+    v = (v * 0x00000101u) & 0x0F00F00Fu;
+    v = (v * 0x00000011u) & 0xC30C30C3u;
+    v = (v * 0x00000005u) & 0x49249249u;
+    return v;
+}
+
+// Given a cell position in the spatial grid, returns its corresponding hash value mod particles_amount
+uint hash_cell_morton(int3 cell_coords)
+{
+    uint x = expand_bits(cell_coords.x);
+    uint y = expand_bits(cell_coords.y);
+    uint z = expand_bits(cell_coords.z);
+    uint morton_code = x | (y << 1) | (z << 2);
+    return morton_code % particles_amount;
+}
+
 // Given a position in world space, returns the density at the position
 float calculate_density_at_position(float3 position)
 {
