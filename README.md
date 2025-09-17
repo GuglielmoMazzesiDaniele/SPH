@@ -39,7 +39,7 @@ Real-time, GPU-accelerated SPH fluids in Unity 6 with volumetric rendering (URP)
 - **Fresnel (Schlick's Approximation)**: reflection vs. refraction weighting by view angle; reflections at glancing angles, transparency head-on.
 - **Normals**: central-difference gradient of density for lighting/Fresnel.
 
-![Honey](https://i.imgur.com/SDpdHmI.gif)
+![Honey](https://github.com/GuglielmoMazzesiDaniele/SPH/blob/main/GIFs/Honey.gif)
 
 ## Requirements
 - Unity 6 with Universal Render Pipeline (URP).
