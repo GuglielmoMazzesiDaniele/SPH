@@ -2,6 +2,8 @@
 
 Real-time, GPU-accelerated SPH fluids in Unity 6 with volumetric rendering (URP), designed and evaluated as my Bachelor’s thesis at [USI](https://www.usi.ch/en).
 
+![Particles](https://github.com/GuglielmoMazzesiDaniele/SPH/blob/main/Images/Particles.png)
+
 ## TL;DR
 
 - **Method**: Weakly-compressible SPH with density/pressure, viscosity, near-density stabilization, and symplectic Euler integration. All core steps run in Compute Shaders.
@@ -11,7 +13,7 @@ Real-time, GPU-accelerated SPH fluids in Unity 6 with volumetric rendering (URP)
 
 ## Demo
 
-INSERT DEMO HERE
+![Demo](https://github.com/GuglielmoMazzesiDaniele/SPH/blob/main/GIFs/Basic%20Showcase.gif)
 
 ## Features
 - **End-to-end GPU pipeline**: prediction → spatial grid build/sort → density/pressure/viscosity → integration.
