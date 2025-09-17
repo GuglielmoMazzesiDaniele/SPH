@@ -263,7 +263,7 @@ Transform:
   m_GameObject: {fileID: 330585543}
   serializedVersion: 2
   m_LocalRotation: {x: 0.2376859, y: 0, z: 0, w: 0.97134215}
-  m_LocalPosition: {x: 125, y: 5, z: -15}
+  m_LocalPosition: {x: 100, y: 5, z: -15}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -653,7 +653,7 @@ Transform:
   m_GameObject: {fileID: 991875224}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 125, y: 0, z: 0}
+  m_LocalPosition: {x: 100, y: 0, z: 0}
   m_LocalScale: {x: 10, y: 7.5, z: 7.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -675,7 +675,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1187119494
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -904,7 +904,7 @@ Transform:
   m_GameObject: {fileID: 1445907275}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 100, y: 0, z: 0}
+  m_LocalPosition: {x: 125, y: 0, z: 0}
   m_LocalScale: {x: 10, y: 10, z: 10}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1038,9 +1038,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnRegions:
-  - particlesAmount: 600000
+  - particlesAmount: 450000
     position: {x: 0, y: 0, z: 0}
-    size: {x: 5, y: 5, z: 5}
+    size: {x: 10, y: 5, z: 10}
     boundariesColor: {r: 0.12771448, g: 0.4447481, b: 0.6603774, a: 1}
 --- !u!1 &1875467724
 GameObject:
@@ -1146,7 +1146,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &1902534304
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1242,9 +1242,9 @@ SceneRoots:
   - {fileID: 371963066}
   - {fileID: 1271518547}
   - {fileID: 1902534308}
-  - {fileID: 1445907278}
   - {fileID: 991875228}
   - {fileID: 1875467728}
   - {fileID: 358399676}
-  - {fileID: 44039807}
   - {fileID: 1187119495}
+  - {fileID: 1445907278}
+  - {fileID: 44039807}
