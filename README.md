@@ -62,5 +62,14 @@ Real-time, GPU-accelerated SPH fluids in Unity 6 with volumetric rendering (URP)
 - Mouse Right-Drag look, Middle-Drag pan, Scroll zoom
 *See the thesis for the full mapping*.
 
+## Performance
+- Test rig: Windows 10, Ryzen 7 3700X, 16 GB RAM, RTX 3070 (8 GB), 1920×1080.
+- Scaling: average FPS decreases smoothly with particle count; neighbor search cost is bounded by the 3×3×3 neighborhood. Minor ±10–15% fluctuations occur as the flow compresses/expands.
+- Headline: ~60 FPS @ 600k, ~30 FPS @ 1.2M particles with the defaults above.
+*Notes on hashing*: the block-partitioned hash delivered the most consistent scaling vs. a modular or Morton hash in side-by-side tests.
 
+## References & Acknowledgements
+- Full write-up: “Efficient Fluid Simulation Using Smoothed Particle Hydrodynamics in Unity” — Bachelor Thesis, Faculty of Informatics, Università della Svizzera italiana.
+- Inspiration: Sebastian Lague’s Coding Adventure: Simulating Fluids.
+- Foundational SPH/graphics references include Müller et al., Koschier et al., and others (see thesis bibliography).
 
